@@ -190,7 +190,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn erased_arc_drop() {
+    fn erased_arc_drops_object_when_last_instance_drops() {
         static mut DROPPED_COUNT: usize = 0;
         struct Drops;
 
@@ -217,5 +217,96 @@ mod tests {
         // with the correct Drop implementation called
         std::mem::drop(erased);
         assert_eq!(unsafe { DROPPED_COUNT }, 1);
+    }
+
+    #[test]
+    fn erased_arc_drops_object_when_last_instance_drops_with_weak() {
+        static mut DROPPED_COUNT: usize = 0;
+        struct Drops;
+
+        impl Drop for Drops {
+            fn drop(&mut self) {
+                // SAFETY: we're single-threaded and never hold a reference to this
+                unsafe {
+                    DROPPED_COUNT += 1;
+                }
+            }
+        }
+        let arc = Arc::new(Drops);
+        let erased = TypeErasedArc::new(arc);
+        let _weak = erased.downgrade();
+        assert_eq!(unsafe { DROPPED_COUNT }, 0);
+
+        // The variable shouldn't drop after we drop a second erased instance
+        let erased2 = erased.clone();
+        std::mem::drop(erased2);
+        assert_eq!(unsafe { DROPPED_COUNT }, 0);
+
+        // The variable should drop after we drop the last instance
+        // with the correct Drop implementation called
+        std::mem::drop(erased);
+        assert_eq!(unsafe { DROPPED_COUNT }, 1);
+    }
+
+    #[test]
+    fn erased_arc_strong_count_tracks_instances() {
+        let arc = Arc::new(42);
+        let erased = TypeErasedArc::new(arc);
+        assert_eq!(erased.strong_count(), 1);
+
+        let erased2 = erased.clone();
+        assert_eq!(erased.strong_count(), 2);
+        assert_eq!(erased2.strong_count(), 2);
+
+        let weak = erased.downgrade();
+        assert_eq!(erased.strong_count(), 2);
+        assert_eq!(erased2.strong_count(), 2);
+        assert_eq!(weak.strong_count(), 2);
+
+        std::mem::drop(erased);
+        std::mem::drop(weak);
+        assert_eq!(erased2.strong_count(), 1);
+    }
+
+    #[test]
+    fn erased_arc_weak_count() {
+        let arc = Arc::new(42);
+        let erased = TypeErasedArc::new(arc);
+        assert_eq!(erased.weak_count(), 0);
+
+        let erased2 = erased.clone();
+        assert_eq!(erased.weak_count(), 0);
+        assert_eq!(erased2.weak_count(), 0);
+
+        std::mem::drop(erased);
+        assert_eq!(erased2.weak_count(), 0);
+
+        let weak = erased2.downgrade();
+        assert_eq!(erased2.weak_count(), 1);
+        assert_eq!(weak.weak_count(), 1);
+
+        let weak2 = weak.clone();
+        assert_eq!(weak.weak_count(), 2);
+        assert_eq!(weak2.weak_count(), 2);
+
+        std::mem::drop(erased2);
+        // weak_count returns 0 when there are no remaning Arcs
+        assert_eq!(weak.weak_count(), 0);
+    }
+
+    #[test]
+    fn weak_can_upgrade_when_there_are_instances() {
+        let arc = Arc::new(42);
+        let erased = TypeErasedArc::new(arc);
+        let weak = erased.downgrade();
+
+        let upgraded = weak.upgrade().unwrap();
+        std::mem::drop(erased);
+        assert_eq!(upgraded.strong_count(), 1);
+
+        std::mem::drop(upgraded);
+
+        let upgraded = weak.upgrade();
+        assert!(matches!(upgraded, None));
     }
 }

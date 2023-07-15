@@ -1,11 +1,11 @@
 mod erased_arc;
 mod erased_ptr;
 
-use std::{hash::Hash, ops::Deref, sync::Arc};
+use std::{hash::Hash, ops::Deref, ptr::NonNull, sync::Arc};
 
 use erased_arc::{TypeErasedArc, TypeErasedWeak};
 
-trait Project<T: ?Sized> {
+pub trait Project<T: ?Sized> {
     fn project<'a, P: ?Sized>(&'a self, f: fn(&'a T) -> &'a P) -> Parc<P>;
 }
 
@@ -22,10 +22,15 @@ impl<T: ?Sized> Project<T> for Parc<T> {
     }
 }
 /// Parc because ProjectedArc
-#[derive(Clone)]
-pub struct Parc<P: ?Sized> {
+pub struct Parc<T: ?Sized> {
     arc: TypeErasedArc,
-    projected: *const P,
+    projected: NonNull<T>,
+}
+
+impl<T> Parc<T> {
+    pub fn new(value: T) -> Parc<T> {
+        Arc::new(value).into()
+    }
 }
 
 impl<T: ?Sized> Parc<T> {
@@ -33,7 +38,7 @@ impl<T: ?Sized> Parc<T> {
         let projected = f(arc);
         // SAFETY: fn shouldn't be able to capture any local references
         // which should mean that the projection done by f is safe
-        let projected = projected as *const T;
+        let projected = unsafe { NonNull::new_unchecked(projected as *const T as *mut T) };
         Self {
             arc: TypeErasedArc::new(arc.clone()),
             projected,
@@ -44,7 +49,7 @@ impl<T: ?Sized> Parc<T> {
         let projected = f(self);
         // SAFETY: fn shouldn't be able to capture any local references
         // which should mean that the projection done by f is safe
-        let projected = projected as *const U;
+        let projected = unsafe { NonNull::new_unchecked(projected as *const U as *mut U) };
         Parc::<U> {
             arc: self.arc.clone(),
             projected,
@@ -67,7 +72,7 @@ impl<T: ?Sized> Parc<T> {
     }
 
     pub fn ptr_eq(this: &Parc<T>, other: &Parc<T>) -> bool {
-        std::ptr::eq(this.projected, other.projected)
+        std::ptr::eq(this.projected.as_ptr(), other.projected.as_ptr())
     }
 }
 
@@ -80,6 +85,15 @@ impl<T: ?Sized> AsRef<T> for Parc<T> {
 impl<T: ?Sized> std::borrow::Borrow<T> for Parc<T> {
     fn borrow(&self) -> &T {
         self.deref()
+    }
+}
+
+impl<T: ?Sized> Clone for Parc<T> {
+    fn clone(&self) -> Self {
+        Self {
+            arc: self.arc.clone(),
+            projected: self.projected,
+        }
     }
 }
 
@@ -105,7 +119,7 @@ impl<T: ?Sized> Deref for Parc<T> {
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        unsafe { &*self.projected }
+        unsafe { self.projected.as_ref() }
     }
 }
 
@@ -118,15 +132,15 @@ where
     }
 }
 
-impl<T: ?Sized> From<Arc<T>> for Parc<T> {
-    fn from(value: Arc<T>) -> Self {
-        Parc::project_arc(&value, |x| x)
+impl<T: ?Sized, F: Into<Arc<T>>> From<F> for Parc<T> {
+    fn from(value: F) -> Self {
+        value.into().project(|x| x)
     }
 }
 
-impl<T: ?Sized> From<Box<T>> for Parc<T> {
-    fn from(value: Box<T>) -> Self {
-        Arc::<T>::from(value).into()
+impl<T> FromIterator<T> for Parc<[T]> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        iter.into_iter().collect::<Arc<[T]>>().into()
     }
 }
 
@@ -144,7 +158,9 @@ where
     T: PartialEq<T> + ?Sized,
 {
     fn eq(&self, other: &Parc<T>) -> bool {
-        self.deref() == other.deref()
+        let this: &T = self;
+        let other: &T = other;
+        this.eq(other)
     }
 }
 
@@ -155,7 +171,9 @@ where
     T: Ord + ?Sized,
 {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.deref().cmp(other)
+        let this: &T = self;
+        let other: &T = other;
+        this.cmp(other)
     }
 }
 
@@ -183,10 +201,9 @@ unsafe impl<T> Sync for Parc<T> where T: Sync + Send + ?Sized {}
 impl<T> Unpin for Parc<T> where T: ?Sized {}
 impl<T> std::panic::UnwindSafe for Parc<T> where T: std::panic::RefUnwindSafe + ?Sized {}
 
-#[derive(Clone)]
 pub struct Peak<T: ?Sized> {
     weak: TypeErasedWeak,
-    projected: *const T,
+    projected: NonNull<T>,
 }
 
 unsafe impl<T: ?Sized + Sync + Send> Send for Peak<T> {}
@@ -206,6 +223,15 @@ impl<T: ?Sized> Peak<T> {
 
     pub fn weak_count(&self) -> usize {
         self.weak.weak_count()
+    }
+}
+
+impl<T: ?Sized> Clone for Peak<T> {
+    fn clone(&self) -> Self {
+        Self {
+            weak: self.weak.clone(),
+            projected: self.projected,
+        }
     }
 }
 

@@ -2,7 +2,7 @@ use std::mem::{size_of, MaybeUninit};
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone)]
-pub(crate) struct TypeErasedPtr(MaybeUninit<[*const (); 2]>);
+pub(crate) struct TypeErasedPtr(MaybeUninit<[usize; 2]>);
 
 impl TypeErasedPtr {
     pub(crate) fn new<T: ?Sized>(ptr: *const T) -> Self {
@@ -21,6 +21,10 @@ impl TypeErasedPtr {
         res
     }
 
+    /// Obtain the original pointer from the type-erased representation.
+    ///
+    /// # Safety
+    /// This can only be called with `Self` that has been created from the exact same `T`.
     pub(crate) unsafe fn as_ptr<T: ?Sized>(self) -> *const T {
         std::mem::transmute_copy(&self.0)
     }
