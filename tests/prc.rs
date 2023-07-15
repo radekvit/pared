@@ -1,52 +1,53 @@
-use prc::sync::{Parc, Weak};
+use prc::prc::Prc;
 use std::any::Any;
+use std::cell::RefCell;
 use std::cmp::PartialEq;
-use std::sync::{Arc, Mutex};
+use std::rc::Rc;
 
 #[test]
 fn slice() {
-    let a: Parc<[u32; 3]> = Arc::new([3, 2, 1]).into();
-    let b: Parc<[u32]> = a.project(|x| &x[..]); // Conversion
+    let a: Prc<[u32; 3]> = Rc::new([3, 2, 1]).into();
+    let b: Prc<[u32]> = a.project(|x| &x[..]); // Conversion
     assert_eq!(*a, *b);
 
     // Exercise is_dangling() with a DST
-    let mut a: Weak<[u32]> = Parc::downgrade(&b);
+    let mut a = Prc::downgrade(&b);
     a = a.clone();
     assert!(a.upgrade().is_some());
 }
 
 #[test]
 fn trait_object() {
-    let a: Parc<u32> = Parc::new(4);
-    let a: Parc<dyn Any> = a.project(|x| x); // Unsizing
+    let a: Prc<u32> = Prc::new(4);
+    let a: Prc<dyn Any> = a.project(|x| x); // Unsizing
 
     // Exercise is_dangling() with a DST
-    let mut a = Parc::downgrade(&a);
+    let mut a = Prc::downgrade(&a);
     a = a.clone();
     assert!(a.upgrade().is_some());
 }
 
 #[test]
 fn float_nan_ne() {
-    let x = Parc::new(f32::NAN);
+    let x = Prc::new(f32::NAN);
     assert!(x != x);
     assert!(!(x == x));
 }
 
 #[test]
 fn partial_eq() {
-    struct TestPEq(Mutex<usize>);
+    struct TestPEq(RefCell<usize>);
     impl PartialEq for TestPEq {
         fn eq(&self, other: &TestPEq) -> bool {
-            *self.0.lock().unwrap() += 1;
-            *other.0.lock().unwrap() += 1;
+            *self.0.borrow_mut() += 1;
+            *other.0.borrow_mut() += 1;
             true
         }
     }
-    let x = Parc::new(TestPEq(Mutex::new(0)));
+    let x = Prc::new(TestPEq(RefCell::new(0)));
     assert!(x == x);
     assert!(!(x != x));
-    assert_eq!(*x.0.lock().unwrap(), 4);
+    assert_eq!(*x.0.borrow(), 4);
 }
 
 const SHARED_ITER_MAX: u16 = 100;
@@ -59,16 +60,16 @@ fn shared_from_iter_normal() {
         // know statically how many elements will be kept:
         let iter = (0..SHARED_ITER_MAX).filter(|x| x % 2 == 0).map(Box::new);
 
-        // Collecting into a `Vec<T>` or `Parc<[T]>` should make no difference:
+        // Collecting into a `Vec<T>` or `Prc<[T]>` should make no difference:
         let vec = iter.clone().collect::<Vec<_>>();
-        let parc = iter.collect::<Parc<[_]>>();
-        assert_eq!(&*vec, &*parc);
+        let prc = iter.collect::<Prc<[_]>>();
+        assert_eq!(&*vec, &*prc);
 
         // Clone a bit and let these get dropped.
         {
-            let _parc_2 = parc.clone();
-            let _parc_3 = parc.clone();
-            let _parc_4 = Parc::downgrade(&_parc_3);
+            let _prc_2 = prc.clone();
+            let _prc_3 = prc.clone();
+            let _prc_4 = Prc::downgrade(&_prc_3);
         }
     } // Drop what hasn't been here.
 }
@@ -77,18 +78,18 @@ fn shared_from_iter_normal() {
 fn projection_to_member() {
     struct HasMembers {
         _unused: usize,
-        a: Mutex<usize>,
+        a: RefCell<usize>,
     }
-    let parc = Parc::new(HasMembers {
+    let prc = Prc::new(HasMembers {
         _unused: 64,
-        a: Mutex::new(432),
+        a: RefCell::new(432),
     });
-    let projected = parc.project(|s| &s.a);
+    let projected = prc.project(|s| &s.a);
 
-    assert_eq!(*projected.lock().unwrap(), 432);
+    assert_eq!(*projected.borrow(), 432);
 
-    *parc.a.lock().unwrap() = 15;
-    assert_eq!(*projected.lock().unwrap(), 15);
+    *prc.a.borrow_mut() = 15;
+    assert_eq!(*projected.borrow(), 15);
 }
 
 #[test]
@@ -96,10 +97,10 @@ fn projection_of_dyn() {
     struct HasMembers {
         s: String,
     }
-    let parc = Parc::new(HasMembers {
+    let prc = Prc::new(HasMembers {
         s: String::from("Hello!"),
     });
-    let projected: Parc<dyn std::fmt::Display> = parc.project(|s| &s.s);
+    let projected: Prc<dyn std::fmt::Display> = prc.project(|s| &s.s);
 
     let formatted = format!("{}", projected);
 

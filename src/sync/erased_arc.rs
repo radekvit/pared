@@ -11,7 +11,7 @@ pub struct TypeErasedArc {
 }
 
 impl TypeErasedArc {
-    pub(crate) fn new<T: ?Sized>(arc: Arc<T>) -> Self {
+    pub(crate) fn new<T: ?Sized + Send + Sync>(arc: Arc<T>) -> Self {
         Self {
             ptr: TypeErasedPtr::new(Arc::into_raw(arc)),
             lifecycle: &ArcErased::<T>::LIFECYCLE,
