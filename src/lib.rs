@@ -5,22 +5,6 @@ use std::{hash::Hash, ops::Deref, ptr::NonNull, sync::Arc};
 
 use erased_arc::{TypeErasedArc, TypeErasedWeak};
 
-pub trait Project<T: ?Sized> {
-    fn project<'a, P: ?Sized>(&'a self, f: fn(&'a T) -> &'a P) -> Parc<P>;
-}
-
-impl<T: ?Sized> Project<T> for Arc<T> {
-    #[inline]
-    fn project<'a, P: ?Sized>(&'a self, f: fn(&'a T) -> &'a P) -> Parc<P> {
-        Parc::project_arc(self, f)
-    }
-}
-impl<T: ?Sized> Project<T> for Parc<T> {
-    #[inline]
-    fn project<'a, P: ?Sized>(&'a self, f: fn(&'a T) -> &'a P) -> Parc<P> {
-        Parc::project(self, f)
-    }
-}
 /// Parc because ProjectedArc
 pub struct Parc<T: ?Sized> {
     arc: TypeErasedArc,
@@ -134,7 +118,7 @@ where
 
 impl<T: ?Sized, F: Into<Arc<T>>> From<F> for Parc<T> {
     fn from(value: F) -> Self {
-        value.into().project(|x| x)
+        Parc::project_arc(&value.into(), |x| x)
     }
 }
 
