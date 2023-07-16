@@ -17,10 +17,6 @@ in a reference-counted pointer while still retaining the same shared ownership o
 We project a field from our stored data to store in Parc, allowing us to only expose that data
 to the receiver.
 
-## Table of Contents
-- [Usage](#usage)
-- [License](#license)
-
 ## Usage
 Pointers from this library can be useful in situations where you're required to share ownership of
 data (e.g. when sending it between threads), but only want to expose a part of the stored data
