@@ -42,6 +42,53 @@
 //! // Error
 //! let denied = no_send.project(|x| x);
 //! ```
+//!
+//! # Soundness
+//! None of the following should compile:
+//!
+//! ```compile_fail
+//! use pared::sync::Parc;
+//!
+//! let x: Parc<()> = Parc::new(());
+//! let z: Parc<str>;
+//! {
+//!     let s = "Hello World!".to_string();
+//!     let s_ref: &str = &s;
+//!     let y: Parc<&str> = x.project(|_| &s_ref);
+//!     z = y.project(|s: &&str| *s);
+//!     // s deallocated here
+//! }
+//! println!("{}", &*z); // printing garbage, accessing `s` after it’s freed
+//! ```
+//!
+//! ```compile_fail
+//! use pared::sync::Parc;
+//!
+//! let x: Parc<()> = Parc::new(());
+//! let z: Parc<str>;
+//! {
+//!     let s = "Hello World!".to_string();
+//!     let s_ref: &str = &s;
+//!     let y: Parc<&str> = x.project(|_| &s_ref);
+//!     z = y.project(|s: &&str| *s);
+//!     // s deallocated here
+//! }
+//! println!("{}", &*z); // printing garbage, accessing `s` after it’s freed
+//! ```
+//!
+//! ```compile_fail
+//! use pared::sync::Parc;
+//! use std::sync::Arc;
+//!
+//! let x: Parc<()> = Parc::new(());
+//! let z: Parc<str>;
+//! {
+//!     let s = "Hello World!".to_string();
+//!     z = x.project(|_| &s as &str);
+//!     // s deallocated here
+//! }
+//! println!("{}", &*z); // printing garbage, accessing `s` after it’s freed
+//! ```
 
 mod erased_arc;
 
@@ -116,7 +163,7 @@ pub struct Parc<T: ?Sized> {
 
 impl<T> Parc<T>
 where
-    T: Send + Sync,
+    T: Send + Sync + 'static,
 {
     /// Constructs a new `Parc<T>`.
     ///
@@ -156,6 +203,7 @@ impl<T: ?Sized> Parc<T> {
     #[inline]
     pub fn from_arc<U, F>(arc: &Arc<U>, project: F) -> Self
     where
+        T: 'static,
         U: ?Sized + Send + Sync,
         F: for<'x> FnOnce(&'x U) -> &'x T,
     {
@@ -191,10 +239,10 @@ impl<T: ?Sized> Parc<T> {
     /// let projected = parc.project(|tuple| &local);
     /// ```
     #[inline]
-    pub fn project<U, F>(&self, project: F) -> Parc<U>
+    pub fn project<'a, U, F>(&'a self, project: F) -> Parc<U>
     where
-        T: Send + Sync,
-        U: ?Sized,
+        T: Send + Sync + 'static,
+        U: ?Sized + 'static,
         F: for<'x> FnOnce(&'x T) -> &'x U,
     {
         let projected = project(self);
@@ -390,7 +438,7 @@ where
 
 impl<T, F> From<F> for Parc<T>
 where
-    T: ?Sized + Send + Sync,
+    T: ?Sized + Send + Sync + 'static,
     F: Into<Arc<T>>,
 {
     #[inline]
@@ -401,7 +449,7 @@ where
 
 impl<T> FromIterator<T> for Parc<[T]>
 where
-    T: Send + Sync,
+    T: Send + Sync + 'static,
 {
     #[inline]
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {

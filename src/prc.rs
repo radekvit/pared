@@ -22,6 +22,52 @@
 //!     accepts_prc(from_u8);
 //! }
 //! ```
+//! //! # Soundness
+//! None of the following should compile:
+//!
+//! ```compile_error
+//! use pared::prc::Prc;
+//!
+//! let x: Prc<()> = Prc::new(());
+//! let z: Prc<str>;
+//! {
+//!     let s = "Hello World!".to_string();
+//!     let s_ref: &str = &s;
+//!     let y: Prc<&str> = x.project(|_| &s_ref);
+//!     z = y.project(|s: &&str| *s);
+//!     // s deallocated here
+//! }
+//! println!("{}", &*z); // printing garbage, accessing `s` after it’s freed
+//! ```
+//!
+//! ```compile_error
+//! use pared::prc::Prc;
+//!
+//! let x: Prc<()> = Prc::new(());
+//! let z: Prc<str>;
+//! {
+//!     let s = "Hello World!".to_string();
+//!     let s_ref: &str = &s;
+//!     let y: Prc<&str> = x.project(|_| &s_ref);
+//!     z = y.project(|s: &&str| *s);
+//!     // s deallocated here
+//! }
+//! println!("{}", &*z); // printing garbage, accessing `s` after it’s freed
+//! ```
+//!
+//! ```compile_error
+//! use pared::prc::Prc;
+//! use std::sync::Arc;
+//!
+//! let x: Prc<()> = Prc::new(());
+//! let z: Prc<str>;
+//! {
+//!     let s = "Hello World!".to_string();
+//!     z = x.project(|_| &s as &str);
+//!     // s deallocated here
+//! }
+//! println!("{}", &*z); // printing garbage, accessing `s` after it’s freed
+//! ```
 
 mod erased_rc;
 
@@ -74,7 +120,10 @@ pub struct Prc<T: ?Sized> {
     projected: NonNull<T>,
 }
 
-impl<T> Prc<T> {
+impl<T> Prc<T>
+where
+    T: 'static,
+{
     /// Constructs a new `Prc<T>`.
     ///
     /// # Example
@@ -112,6 +161,7 @@ impl<T: ?Sized> Prc<T> {
     pub fn from_rc<U, F>(rc: &Rc<U>, project: F) -> Self
     where
         U: ?Sized,
+        T: 'static,
         F: for<'x> FnOnce(&'x U) -> &'x T,
     {
         let projected = project(rc);
@@ -123,6 +173,20 @@ impl<T: ?Sized> Prc<T> {
             projected,
         }
     }
+
+    // pub fn from_rc<F>(rc: &Rc<T>, project: F) -> Prc<<F as ProjectOnce<'_, T>>::Output>
+    // where
+    //     F: for<'x> ProjectOnce<'x, T>,
+    // {
+    //     let projected = project.project_once(rc);
+    //     // SAFETY: fn shouldn't be able to capture any local references
+    //     // which should mean that the projection done by f is safe
+    //     let projected = unsafe { NonNull::new_unchecked(projected as *const _ as *mut _) };
+    //     Prc::<<F as ProjectOnce<'_, T>>::Output> {
+    //         rc: TypeErasedRc::new(rc.clone()),
+    //         projected,
+    //     }
+    // }
 
     /// Constructs a new `Prc<T>` from an existing `Prc<T>` by projecting a field.
     ///
@@ -145,6 +209,7 @@ impl<T: ?Sized> Prc<T> {
     /// ```
     pub fn project<U, F>(&self, project: F) -> Prc<U>
     where
+        T: 'static,
         U: ?Sized,
         F: for<'x> FnOnce(&'x T) -> &'x U,
     {
@@ -317,13 +382,20 @@ where
     }
 }
 
-impl<T: ?Sized, F: Into<Rc<T>>> From<F> for Prc<T> {
+impl<T, F> From<F> for Prc<T>
+where
+    T: ?Sized + 'static,
+    F: Into<Rc<T>>,
+{
     fn from(value: F) -> Self {
         Prc::from_rc(&value.into(), |x| x)
     }
 }
 
-impl<T> FromIterator<T> for Prc<[T]> {
+impl<T> FromIterator<T> for Prc<[T]>
+where
+    T: 'static,
+{
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         iter.into_iter().collect::<Rc<[T]>>().into()
     }
