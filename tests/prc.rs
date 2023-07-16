@@ -29,6 +29,8 @@ fn trait_object() {
 
 #[test]
 fn float_nan_ne() {
+    #![allow(clippy::eq_op)]
+
     let x = Prc::new(f32::NAN);
     assert!(x != x);
     assert!(!(x == x));
@@ -36,6 +38,8 @@ fn float_nan_ne() {
 
 #[test]
 fn partial_eq() {
+    #![allow(clippy::eq_op)]
+
     struct TestPEq(RefCell<usize>);
     impl PartialEq for TestPEq {
         fn eq(&self, other: &TestPEq) -> bool {
@@ -54,6 +58,7 @@ const SHARED_ITER_MAX: u16 = 100;
 
 #[test]
 fn shared_from_iter_normal() {
+    #![allow(clippy::redundant_clone)]
     // Exercise the base implementation for non-`TrustedLen` iterators.
     {
         // `Filter` is never `TrustedLen` since we don't

@@ -158,6 +158,27 @@ impl<T: ?Sized> Prc<T> {
         }
     }
 
+    /// Provides a raw pointer to the data.
+    ///
+    /// The counts are not affected in any way and the `Prc` is not consumed. The pointer is valid for
+    /// as long as there are strong counts in the `Prc` or in the underlying `Rc`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use pared::prc::Prc;
+    ///
+    /// let x = Prc::new("hello".to_owned());
+    /// let y = Prc::clone(&x);
+    /// let x_ptr = Prc::as_ptr(&x);
+    /// assert_eq!(x_ptr, Prc::as_ptr(&y));
+    /// assert_eq!(unsafe { &*x_ptr }, "hello");
+    /// ```
+    #[must_use]
+    pub fn as_ptr(this: &Self) -> *const T {
+        NonNull::as_ptr(this.projected)
+    }
+
     /// Creates a new `Weak` pointer to this allocation.
     ///
     /// This `Weak` pointer is tied to strong references to the original `Rc`, meaning it's not
@@ -397,6 +418,35 @@ pub struct Weak<T: ?Sized> {
 }
 
 impl<T: ?Sized> Weak<T> {
+    /// Returns a raw pointer to the object `T` pointed to by this `Weak<T>`.
+    ///
+    /// The pointer is valid only if there are some strong references.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use pared::prc::Prc;
+    /// use std::ptr;
+    ///
+    /// let strong = Prc::new("hello".to_owned());
+    /// let weak = Prc::downgrade(&strong);
+    /// // Both point to the same object
+    /// assert!(ptr::eq(&*strong, weak.as_ptr()));
+    /// // The strong here keeps it alive, so we can still access the object.
+    /// assert_eq!("hello", unsafe { &*weak.as_ptr() });
+    ///
+    /// drop(strong);
+    /// // But not any more. We can do weak.as_ptr(), but accessing the pointer would lead to
+    /// // undefined behaviour.
+    /// // assert_eq!("hello", unsafe { &*weak.as_ptr() });
+    /// ```
+    ///
+    /// [`null`]: core::ptr::null "ptr::null"
+    #[must_use]
+    pub fn as_ptr(&self) -> *const T {
+        NonNull::as_ptr(self.projected)
+    }
+
     /// Attempts to upgrade the `Weak` pointer to a [`Prc`], delaying dropping of the inner value
     /// if successful.
     ///

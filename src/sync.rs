@@ -125,6 +125,7 @@ where
     /// use pared::sync::Parc;
     /// let parc = Parc::new(6);
     /// ```
+    #[inline]
     pub fn new(value: T) -> Parc<T> {
         Arc::new(value).into()
     }
@@ -152,6 +153,7 @@ impl<T: ?Sized> Parc<T> {
     /// let local = 5;
     /// let parc = Parc::from_arc(&arc, |tuple| &local);
     /// ```
+    #[inline]
     pub fn from_arc<U, F>(arc: &Arc<U>, project: F) -> Self
     where
         U: ?Sized + Send + Sync,
@@ -188,6 +190,7 @@ impl<T: ?Sized> Parc<T> {
     /// let local = 5;
     /// let projected = parc.project(|tuple| &local);
     /// ```
+    #[inline]
     pub fn project<U, F>(&self, project: F) -> Parc<U>
     where
         T: Send + Sync,
@@ -205,6 +208,27 @@ impl<T: ?Sized> Parc<T> {
             projected,
         }
     }
+    /// Provides a raw pointer to the data.
+    ///
+    /// The counts are not affected in any way and the `Parc` is not consumed. The pointer is valid for
+    /// as long as there are strong counts in the `Parc` or in the underlying `Arc`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use pared::sync::Parc;
+    ///
+    /// let x = Parc::new("hello".to_owned());
+    /// let y = Parc::clone(&x);
+    /// let x_ptr = Parc::as_ptr(&x);
+    /// assert_eq!(x_ptr, Parc::as_ptr(&y));
+    /// assert_eq!(unsafe { &*x_ptr }, "hello");
+    /// ```
+    #[must_use]
+    pub fn as_ptr(this: &Self) -> *const T {
+        NonNull::as_ptr(this.projected)
+    }
+
     /// Creates a new `Weak` pointer to this allocation.
     ///
     /// This `Weak` pointer is tied to strong references to the original `Arc`, meaning it's not
@@ -222,6 +246,7 @@ impl<T: ?Sized> Parc<T> {
     /// let stored = weak.upgrade().map(|parc| *parc);
     /// assert_eq!(stored, Some(42));
     /// ```
+    #[inline]
     pub fn downgrade(this: &Parc<T>) -> Weak<T> {
         Weak::<T> {
             weak: this.arc.downgrade(),
@@ -249,6 +274,7 @@ impl<T: ?Sized> Parc<T> {
     /// ```
     ///
     /// [`Arc::weak_count`]: https://doc.rust-lang.org/std/sync/struct.Arc.html#method.weak_count
+    #[inline]
     pub fn weak_count(this: &Parc<T>) -> usize {
         this.arc.weak_count()
     }
@@ -273,6 +299,7 @@ impl<T: ?Sized> Parc<T> {
     /// ```
     ///
     /// [`Arc::weak_count`]: https://doc.rust-lang.org/std/sync/struct.Arc.html#method.strong_count
+    #[inline]
     pub fn strong_count(this: &Parc<T>) -> usize {
         this.arc.strong_count()
     }
@@ -299,18 +326,21 @@ impl<T: ?Sized> Parc<T> {
 }
 
 impl<T: ?Sized> AsRef<T> for Parc<T> {
+    #[inline]
     fn as_ref(&self) -> &T {
         self.deref()
     }
 }
 
 impl<T: ?Sized> core::borrow::Borrow<T> for Parc<T> {
+    #[inline]
     fn borrow(&self) -> &T {
         self.deref()
     }
 }
 
 impl<T: ?Sized> Clone for Parc<T> {
+    #[inline]
     fn clone(&self) -> Self {
         Self {
             arc: self.arc.clone(),
@@ -352,6 +382,7 @@ impl<T> std::error::Error for Parc<T>
 where
     T: std::error::Error + ?Sized,
 {
+    #[inline]
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         self.deref().source()
     }
@@ -362,6 +393,7 @@ where
     T: ?Sized + Send + Sync,
     F: Into<Arc<T>>,
 {
+    #[inline]
     fn from(value: F) -> Self {
         Parc::from_arc(&value.into(), |x| x)
     }
@@ -371,6 +403,7 @@ impl<T> FromIterator<T> for Parc<[T]>
 where
     T: Send + Sync,
 {
+    #[inline]
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         iter.into_iter().collect::<Arc<[T]>>().into()
     }
@@ -380,6 +413,7 @@ impl<T> Hash for Parc<T>
 where
     T: Hash + ?Sized,
 {
+    #[inline]
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.deref().hash(state)
     }
@@ -389,6 +423,7 @@ impl<T> PartialEq<Parc<T>> for Parc<T>
 where
     T: PartialEq<T> + ?Sized,
 {
+    #[inline]
     fn eq(&self, other: &Parc<T>) -> bool {
         let this: &T = self;
         let other: &T = other;
@@ -402,6 +437,7 @@ impl<T> Ord for Parc<T>
 where
     T: Ord + ?Sized,
 {
+    #[inline]
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         let this: &T = self;
         let other: &T = other;
@@ -413,6 +449,7 @@ impl<T> PartialOrd<Parc<T>> for Parc<T>
 where
     T: PartialOrd<T> + ?Sized,
 {
+    #[inline]
     fn partial_cmp(&self, other: &Parc<T>) -> Option<core::cmp::Ordering> {
         self.deref().partial_cmp(other)
     }
@@ -498,6 +535,35 @@ unsafe impl<T: ?Sized + Sync + Send> Send for Weak<T> {}
 unsafe impl<T: ?Sized + Sync + Send> Sync for Weak<T> {}
 
 impl<T: ?Sized> Weak<T> {
+    /// Returns a raw pointer to the object `T` pointed to by this `Weak<T>`.
+    ///
+    /// The pointer is valid only if there are some strong references.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use pared::sync::Parc;
+    /// use std::ptr;
+    ///
+    /// let strong = Parc::new("hello".to_owned());
+    /// let weak = Parc::downgrade(&strong);
+    /// // Both point to the same object
+    /// assert!(ptr::eq(&*strong, weak.as_ptr()));
+    /// // The strong here keeps it alive, so we can still access the object.
+    /// assert_eq!("hello", unsafe { &*weak.as_ptr() });
+    ///
+    /// drop(strong);
+    /// // But not any more. We can do weak.as_ptr(), but accessing the pointer would lead to
+    /// // undefined behaviour.
+    /// // assert_eq!("hello", unsafe { &*weak.as_ptr() });
+    /// ```
+    ///
+    /// [`null`]: core::ptr::null "ptr::null"
+    #[must_use]
+    pub fn as_ptr(&self) -> *const T {
+        NonNull::as_ptr(self.projected)
+    }
+
     /// Attempts to upgrade the `Weak` pointer to a [`Parc`], delaying dropping of the inner value
     /// if successful.
     ///
@@ -520,6 +586,7 @@ impl<T: ?Sized> Weak<T> {
     ///
     /// assert!(weak_five.upgrade().is_none());
     /// ```
+    #[inline]
     pub fn upgrade(&self) -> Option<Parc<T>> {
         Some(Parc {
             arc: self.weak.upgrade()?,
@@ -528,6 +595,7 @@ impl<T: ?Sized> Weak<T> {
     }
 
     /// Returns the number of strong pointers pointing to this allocation.
+    #[inline]
     pub fn strong_count(&self) -> usize {
         self.weak.strong_count()
     }
@@ -537,6 +605,7 @@ impl<T: ?Sized> Weak<T> {
     /// See [`std::sync::Weak::weak_count`] for more details.
     ///
     /// [`std::sync::Weak::weak_count`]: https://doc.rust-lang.org/std/sync/struct.Weak.html#method.weak_count
+    #[inline]
     pub fn weak_count(&self) -> usize {
         self.weak.weak_count()
     }
@@ -546,12 +615,14 @@ impl<T: ?Sized> Weak<T> {
     ///
     /// This function is able to compare `Weak` pointers even when either or both of them
     /// can't successfully `upgrade` anymore.
+    #[inline]
     pub fn ptr_eq(&self, other: &Weak<T>) -> bool {
         core::ptr::eq(self.projected.as_ptr(), other.projected.as_ptr())
     }
 }
 
 impl<T: ?Sized> Clone for Weak<T> {
+    #[inline]
     fn clone(&self) -> Self {
         Self {
             weak: self.weak.clone(),

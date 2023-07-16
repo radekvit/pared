@@ -1,13 +1,35 @@
 [package]
 name = "pared"
 version = "0.1.0"
+authors = ["Radek Vít <radekvitr@gmail.com>"]
 edition = "2021"
+rust-version = "1.56"
+description = "Projected reference counted pointers"
+repository = "https://github.com/radekvit/pared"
+license = "MIT OR Apache-2.0"
+keywords = [
+    "arc",
+    "rc",
+    "projected",
+    "aliasing",
+    "shared_ptr",
+]
+categories = [
+    "data-structures",
+    "memory-management",
+    "no-std",
+    "rust-patterns",
+]
 
 [features]
-# default_featurs = ["std"]
+default = ["std"]
 std = []
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
 
 [dev-dependencies]
 doc-comment = "0.3.3"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg=docsrs"]

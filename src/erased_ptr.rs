@@ -25,6 +25,7 @@ impl core::fmt::Debug for TypeErasedPtr {
 impl TypeErasedPtr {
     /// Type-erase a possibly-unsized pointer,
     /// only preserving the bit-representation of its pointer.
+    #[inline]
     pub(crate) fn new<T: ?Sized>(ptr: *const T) -> Self {
         let mut res = Self(MaybeUninit::zeroed());
 
@@ -47,6 +48,7 @@ impl TypeErasedPtr {
     ///
     /// # Safety
     /// This can only be called with `Self` that has been created from the exact same `T`.
+    #[inline]
     pub(crate) unsafe fn as_ptr<T: ?Sized>(self) -> *const T {
         core::mem::transmute_copy(&self.0)
     }
