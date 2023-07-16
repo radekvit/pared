@@ -1,4 +1,7 @@
-use std::mem::{size_of, MaybeUninit};
+use core::{
+    marker::Sized,
+    mem::{size_of, MaybeUninit},
+};
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone)]
@@ -26,13 +29,14 @@ impl TypeErasedPtr {
     /// # Safety
     /// This can only be called with `Self` that has been created from the exact same `T`.
     pub(crate) unsafe fn as_ptr<T: ?Sized>(self) -> *const T {
-        std::mem::transmute_copy(&self.0)
+        core::mem::transmute_copy(&self.0)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::TypeErasedPtr;
+    use alloc::{format, string::String, vec};
 
     #[test]
     fn sized() {
@@ -59,11 +63,11 @@ mod tests {
         // We want to check that the pointers actually ARE compatible
         #![allow(clippy::vtable_address_comparisons)]
 
-        let debug: &dyn std::fmt::Debug = &"Hello!";
-        let ptr = TypeErasedPtr::new(debug as *const dyn std::fmt::Debug);
+        let debug: &dyn core::fmt::Debug = &"Hello!";
+        let ptr = TypeErasedPtr::new(debug as *const dyn core::fmt::Debug);
 
-        let r: &dyn std::fmt::Debug = unsafe { &*ptr.as_ptr() };
-        assert_eq!(r as *const _, debug as *const dyn std::fmt::Debug);
+        let r: &dyn core::fmt::Debug = unsafe { &*ptr.as_ptr() };
+        assert_eq!(r as *const _, debug as *const dyn core::fmt::Debug);
         assert_eq!(format!("{:?}", r), "\"Hello!\"");
     }
 }

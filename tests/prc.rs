@@ -1,4 +1,4 @@
-use prc::prc::Prc;
+use parc::prc::Prc;
 use std::any::Any;
 use std::cell::RefCell;
 use std::cmp::PartialEq;

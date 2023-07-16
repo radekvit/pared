@@ -1,7 +1,6 @@
-use std::{
-    marker::PhantomData,
-    rc::{Rc, Weak},
-};
+use alloc::rc::{Rc, Weak};
+use core::marker::PhantomData;
+use core::option::{Option, Option::Some};
 
 use crate::erased_ptr::TypeErasedPtr;
 
@@ -137,47 +136,47 @@ impl<T: ?Sized> RcErased<T> {
     pub(crate) unsafe fn downgrade(ptr: TypeErasedPtr) -> TypeErasedPtr {
         let arc = Self::as_arc(ptr);
         let weak = Rc::downgrade(&arc);
-        std::mem::forget(arc);
+        core::mem::forget(arc);
         TypeErasedPtr::new(Weak::into_raw(weak))
     }
 
     pub(crate) unsafe fn strong_count(ptr: TypeErasedPtr) -> usize {
         let arc = Self::as_arc(ptr);
         let count = Rc::strong_count(&arc);
-        std::mem::forget(arc);
+        core::mem::forget(arc);
         count
     }
     pub(crate) unsafe fn weak_count(ptr: TypeErasedPtr) -> usize {
         let arc = Self::as_arc(ptr);
         let count = Rc::weak_count(&arc);
-        std::mem::forget(arc);
+        core::mem::forget(arc);
         count
     }
     pub(crate) unsafe fn clone_weak(ptr: TypeErasedPtr) {
         let weak = Self::as_weak(ptr);
-        std::mem::forget(weak.clone());
-        std::mem::forget(weak);
+        core::mem::forget(weak.clone());
+        core::mem::forget(weak);
     }
     pub(crate) unsafe fn drop_weak(ptr: TypeErasedPtr) {
         let weak = Self::as_weak(ptr);
-        std::mem::drop(weak);
+        core::mem::drop(weak);
     }
     pub(crate) unsafe fn upgrade_weak(ptr: TypeErasedPtr) -> Option<TypeErasedPtr> {
         let weak = Self::as_weak(ptr);
         let arc = weak.upgrade();
-        std::mem::forget(weak);
+        core::mem::forget(weak);
         arc.map(|arc| TypeErasedPtr::new(Rc::into_raw(arc)))
     }
     pub(crate) unsafe fn strong_count_weak(ptr: TypeErasedPtr) -> usize {
         let weak = Self::as_weak(ptr);
         let count = Weak::strong_count(&weak);
-        std::mem::forget(weak);
+        core::mem::forget(weak);
         count
     }
     pub(crate) unsafe fn weak_count_weak(ptr: TypeErasedPtr) -> usize {
         let weak = Self::as_weak(ptr);
         let count = Weak::weak_count(&weak);
-        std::mem::forget(weak);
+        core::mem::forget(weak);
         count
     }
 
@@ -210,17 +209,17 @@ mod tests {
         let arc = Rc::new(Drops);
         let erased = TypeErasedRc::new(arc.clone());
         // The variable shouldn't drop after we drop the original Arc
-        std::mem::drop(arc);
+        core::mem::drop(arc);
         assert_eq!(unsafe { DROPPED_COUNT }, 0);
 
         // The variable shouldn't drop after we drop a second erased instance
         let erased2 = erased.clone();
-        std::mem::drop(erased2);
+        core::mem::drop(erased2);
         assert_eq!(unsafe { DROPPED_COUNT }, 0);
 
         // The variable should drop after we drop the last instance
         // with the correct Drop implementation called
-        std::mem::drop(erased);
+        core::mem::drop(erased);
         assert_eq!(unsafe { DROPPED_COUNT }, 1);
     }
 
@@ -244,12 +243,12 @@ mod tests {
 
         // The variable shouldn't drop after we drop a second erased instance
         let erased2 = erased.clone();
-        std::mem::drop(erased2);
+        core::mem::drop(erased2);
         assert_eq!(unsafe { DROPPED_COUNT }, 0);
 
         // The variable should drop after we drop the last instance
         // with the correct Drop implementation called
-        std::mem::drop(erased);
+        core::mem::drop(erased);
         assert_eq!(unsafe { DROPPED_COUNT }, 1);
     }
 
@@ -268,8 +267,8 @@ mod tests {
         assert_eq!(erased2.strong_count(), 2);
         assert_eq!(weak.strong_count(), 2);
 
-        std::mem::drop(erased);
-        std::mem::drop(weak);
+        core::mem::drop(erased);
+        core::mem::drop(weak);
         assert_eq!(erased2.strong_count(), 1);
     }
 
@@ -283,7 +282,7 @@ mod tests {
         assert_eq!(erased.weak_count(), 0);
         assert_eq!(erased2.weak_count(), 0);
 
-        std::mem::drop(erased);
+        core::mem::drop(erased);
         assert_eq!(erased2.weak_count(), 0);
 
         let weak = erased2.downgrade();
@@ -294,7 +293,7 @@ mod tests {
         assert_eq!(weak.weak_count(), 2);
         assert_eq!(weak2.weak_count(), 2);
 
-        std::mem::drop(erased2);
+        core::mem::drop(erased2);
         // weak_count returns 0 when there are no remaning Arcs
         assert_eq!(weak.weak_count(), 0);
     }
@@ -306,10 +305,10 @@ mod tests {
         let weak = erased.downgrade();
 
         let upgraded = weak.upgrade().unwrap();
-        std::mem::drop(erased);
+        core::mem::drop(erased);
         assert_eq!(upgraded.strong_count(), 1);
 
-        std::mem::drop(upgraded);
+        core::mem::drop(upgraded);
 
         let upgraded = weak.upgrade();
         assert!(matches!(upgraded, None));

@@ -1,4 +1,4 @@
-use prc::sync::{Parc, Weak};
+use parc::sync::{Parc, Weak};
 use std::any::Any;
 use std::cmp::PartialEq;
 use std::sync::{Arc, Mutex};
@@ -18,7 +18,7 @@ fn slice() {
 #[test]
 fn trait_object() {
     let a: Parc<u32> = Parc::new(4);
-    let a: Parc<dyn Any> = a.project(|x| x); // Unsizing
+    let a: Parc<dyn Any> = a.project(|x| x as &dyn Any); // Unsizing
 
     // Exercise is_dangling() with a DST
     let mut a = Parc::downgrade(&a);
@@ -99,7 +99,7 @@ fn projection_of_dyn() {
     let parc = Parc::new(HasMembers {
         s: String::from("Hello!"),
     });
-    let projected: Parc<dyn std::fmt::Display> = parc.project(|s| &s.s);
+    let projected: Parc<dyn std::fmt::Display> = parc.project(|s| &s.s as &dyn std::fmt::Display);
 
     let formatted = format!("{}", projected);
 

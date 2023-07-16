@@ -1,10 +1,112 @@
+//! Projected atomic reference-counted pointers.
+//!
+//! Available pointer types:
+//! - [`Parc`]
+//! - [`Weak`]
+//!
+//! # Example
+//! ```
+//! # use std::sync::Arc;
+//! # use parc::sync::{Parc, Weak};
+//! fn accepts_parc(parc: Parc<u8>) {}
+//!
+//! // Parc can be created by projecting references from an Arc
+//! let from_tuple = Parc::from_arc(&Arc::new((16usize, 8u8)), |tuple| &tuple.1);
+//! // Or by using any T: Into<Arc<_>>
+//! let from_u8: Parc<u8> = Parc::new(8u8);
+//!
+//! std::thread::spawn(move || {
+//!     // Functions accept any Parc<T>, regardless of which Arc<U> it was created from
+//!     if (true) {
+//!         accepts_parc(from_tuple);
+//!     } else {
+//!         accepts_parc(from_u8);
+//!     }
+//! });
+//! ```
+//!
+//! Parc can only be created from `Arc`s (or other `Parc`s) for `T: Send + Sync`.
+//!
+//! ```compile_fail
+//! # use std::sync::Arc;
+//! # use parc::sync::Parc;
+//! // Error: Parc can only be backed by a Sync
+//! let parc = Arc::new(&1 as *const _).into();
+//! ```
+//! ```compile_fail
+//! # use std::sync::Arc;
+//! # use parc::sync::Parc;
+//! let parc = Parc::new(1);
+//! // This Parc is !Send and !Sync
+//! let no_send = parc.project(|x| &(&1u8 as *const u8));
+//! // Error
+//! let denied = no_send.project(|x| x);
+//! ```
+
 mod erased_arc;
 
-use std::{hash::Hash, ops::Deref, ptr::NonNull, sync::Arc};
+use alloc::sync::Arc;
+use core::{
+    clone::Clone,
+    cmp::{Eq, Ord, PartialEq, PartialOrd},
+    convert::{AsRef, From, Into},
+    hash::Hash,
+    iter::{FromIterator, IntoIterator},
+    marker::{Send, Sized, Sync, Unpin},
+    ops::Deref,
+    ops::FnOnce,
+    option::{Option, Option::Some},
+    ptr::NonNull,
+};
 
 use erased_arc::{TypeErasedArc, TypeErasedWeak};
 
-/// Parc because ProjectedArc
+/// Projected atomic reference counted pointer.
+///
+/// This is a projected version of [`core::sync::Arc`] that points to any (sub)member of the original
+/// `Arc`'s data. Instances created from different types of `Arc<T>`s are interchangable.
+///
+/// This type implements most of `Arc`'s API surface, with the exception of operations that require
+/// access to the original `Arc`'s type, which is unavailable from this type.
+///
+/// # Example
+/// ```
+/// # use std::sync::Arc;
+/// # use parc::sync::{Parc, Weak};
+/// fn accepts_parc(parc: Parc<u8>) {}
+///
+/// // Parc can be created by projecting references from an Arc
+/// let from_tuple = Parc::from_arc(&Arc::new((16usize, 8u8)), |tuple| &tuple.1);
+/// // Or by using any T: Into<Arc<_>>
+/// let from_u8: Parc<u8> = Parc::new(8u8);
+///
+/// std::thread::spawn(move || {
+///     // Functions accept any Parc<T>, regardless of which Arc<U> it was created from
+///     if (true) {
+///         accepts_parc(from_tuple);
+///     } else {
+///         accepts_parc(from_u8);
+///     }
+/// });
+/// ```
+///
+/// Parc can only be created from `Arc`s (or other `Parc`s) for `T: Send + Sync`.
+///
+/// ```compile_fail
+/// # use std::sync::Arc;
+/// # use parc::sync::Parc;
+/// // Error: Parc can only be backed by a Sync
+/// let parc = Arc::new(&1 as *const _).into();
+/// ```
+/// ```compile_fail
+/// # use std::sync::Arc;
+/// # use parc::sync::Parc;
+/// let parc = Parc::new(1);
+/// // This Parc is !Send and !Sync
+/// let no_send = parc.project(|x| &(&1u8 as *const u8));
+/// // Error
+/// let denied = no_send.project(|x| x);
+/// ```
 pub struct Parc<T: ?Sized> {
     arc: TypeErasedArc,
     projected: NonNull<T>,
@@ -14,17 +116,31 @@ impl<T> Parc<T>
 where
     T: Send + Sync,
 {
+    /// Constructs a new `Parc<T>`.
+    ///
+    /// # Example
+    /// ```
+    /// use parc::sync::Parc;
+    /// let parc = Parc::new(6);
+    /// ```
     pub fn new(value: T) -> Parc<T> {
         Arc::new(value).into()
     }
 }
 
 impl<T: ?Sized> Parc<T> {
-    pub fn project_arc<'a, U: ?Sized>(arc: &'a Arc<U>, f: fn(&'a U) -> &'a T) -> Self
+    /// Constructs a new `Parc<T>` from an existing `Arc<T>`.
+    ///
+    /// # Panics
+    /// If `f` panics, the panic is propagated to the caller and the arc won't be cloned.
+    ///
+    /// # Example
+    pub fn from_arc<U, F>(arc: &Arc<U>, project: F) -> Self
     where
-        U: Send + Sync,
+        U: ?Sized + Send + Sync,
+        F: for<'x> FnOnce(&'x U) -> &'x T,
     {
-        let projected = f(arc);
+        let projected = project(arc);
         // SAFETY: fn shouldn't be able to capture any local references
         // which should mean that the projection done by f is safe
         let projected = unsafe { NonNull::new_unchecked(projected as *const T as *mut T) };
@@ -34,8 +150,11 @@ impl<T: ?Sized> Parc<T> {
         }
     }
 
-    pub fn project<'a, U: ?Sized>(&'a self, f: fn(&'a T) -> &'a U) -> Parc<U> {
-        let projected = f(self);
+    pub fn project<U: ?Sized, F: for<'x> FnOnce(&'x T) -> &'x U>(&self, project: F) -> Parc<U>
+    where
+        T: Send + Sync,
+    {
+        let projected = project(self);
         // SAFETY: fn shouldn't be able to capture any local references
         // which should mean that the projection done by f is safe
         let projected = unsafe { NonNull::new_unchecked(projected as *const U as *mut U) };
@@ -61,7 +180,7 @@ impl<T: ?Sized> Parc<T> {
     }
 
     pub fn ptr_eq(this: &Parc<T>, other: &Parc<T>) -> bool {
-        std::ptr::eq(this.projected.as_ptr(), other.projected.as_ptr())
+        core::ptr::eq(this.projected.as_ptr(), other.projected.as_ptr())
     }
 }
 
@@ -71,7 +190,7 @@ impl<T: ?Sized> AsRef<T> for Parc<T> {
     }
 }
 
-impl<T: ?Sized> std::borrow::Borrow<T> for Parc<T> {
+impl<T: ?Sized> core::borrow::Borrow<T> for Parc<T> {
     fn borrow(&self) -> &T {
         self.deref()
     }
@@ -86,19 +205,19 @@ impl<T: ?Sized> Clone for Parc<T> {
     }
 }
 
-impl<T: ?Sized + std::fmt::Debug> std::fmt::Debug for Parc<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T: ?Sized + core::fmt::Debug> core::fmt::Debug for Parc<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Parc")
             .field("projected", &self.deref())
             .finish()
     }
 }
 
-impl<T> std::fmt::Display for Parc<T>
+impl<T> core::fmt::Display for Parc<T>
 where
-    T: std::fmt::Display + ?Sized,
+    T: core::fmt::Display + ?Sized,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.deref().fmt(f)
     }
 }
@@ -112,6 +231,7 @@ impl<T: ?Sized> Deref for Parc<T> {
     }
 }
 
+#[cfg(feature = "std")]
 impl<T> std::error::Error for Parc<T>
 where
     T: std::error::Error + ?Sized,
@@ -127,7 +247,7 @@ where
     F: Into<Arc<T>>,
 {
     fn from(value: F) -> Self {
-        Parc::project_arc(&value.into(), |x| x)
+        Parc::from_arc(&value.into(), |x| x)
     }
 }
 
@@ -144,7 +264,7 @@ impl<T> Hash for Parc<T>
 where
     T: Hash + ?Sized,
 {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.deref().hash(state)
     }
 }
@@ -166,7 +286,7 @@ impl<T> Ord for Parc<T>
 where
     T: Ord + ?Sized,
 {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         let this: &T = self;
         let other: &T = other;
         this.cmp(other)
@@ -177,17 +297,17 @@ impl<T> PartialOrd<Parc<T>> for Parc<T>
 where
     T: PartialOrd<T> + ?Sized,
 {
-    fn partial_cmp(&self, other: &Parc<T>) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Parc<T>) -> Option<core::cmp::Ordering> {
         self.deref().partial_cmp(other)
     }
 }
 
-impl<T> std::fmt::Pointer for Parc<T>
+impl<T> core::fmt::Pointer for Parc<T>
 where
     T: ?Sized,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Pointer::fmt(&self.projected, f)
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        core::fmt::Pointer::fmt(&self.projected, f)
     }
 }
 
@@ -195,7 +315,7 @@ unsafe impl<T> Send for Parc<T> where T: Sync + Send + ?Sized {}
 unsafe impl<T> Sync for Parc<T> where T: Sync + Send + ?Sized {}
 
 impl<T> Unpin for Parc<T> where T: ?Sized {}
-impl<T> std::panic::UnwindSafe for Parc<T> where T: std::panic::RefUnwindSafe + ?Sized {}
+impl<T> core::panic::UnwindSafe for Parc<T> where T: core::panic::RefUnwindSafe + ?Sized {}
 
 pub struct Weak<T: ?Sized> {
     weak: TypeErasedWeak,
@@ -231,8 +351,8 @@ impl<T: ?Sized> Clone for Weak<T> {
     }
 }
 
-impl<T: ?Sized> std::fmt::Debug for Weak<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T: ?Sized> core::fmt::Debug for Weak<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "(Peak)")
     }
 }

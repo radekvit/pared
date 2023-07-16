@@ -1,6 +1,12 @@
 mod erased_rc;
 
-use std::{hash::Hash, ops::Deref, ptr::NonNull, rc::Rc};
+use alloc::rc::Rc;
+use core::{
+    hash::Hash,
+    ops::Deref,
+    option::{Option, Option::Some},
+    ptr::NonNull,
+};
 
 use erased_rc::{TypeErasedRc, TypeErasedWeak};
 
@@ -55,7 +61,7 @@ impl<T: ?Sized> Prc<T> {
     }
 
     pub fn ptr_eq(this: &Prc<T>, other: &Prc<T>) -> bool {
-        std::ptr::eq(this.projected.as_ptr(), other.projected.as_ptr())
+        core::ptr::eq(this.projected.as_ptr(), other.projected.as_ptr())
     }
 }
 
@@ -65,7 +71,7 @@ impl<T: ?Sized> AsRef<T> for Prc<T> {
     }
 }
 
-impl<T: ?Sized> std::borrow::Borrow<T> for Prc<T> {
+impl<T: ?Sized> core::borrow::Borrow<T> for Prc<T> {
     fn borrow(&self) -> &T {
         self.deref()
     }
@@ -80,19 +86,19 @@ impl<T: ?Sized> Clone for Prc<T> {
     }
 }
 
-impl<T: ?Sized + std::fmt::Debug> std::fmt::Debug for Prc<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T: ?Sized + core::fmt::Debug> core::fmt::Debug for Prc<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Parc")
             .field("projected", &self.deref())
             .finish()
     }
 }
 
-impl<T> std::fmt::Display for Prc<T>
+impl<T> core::fmt::Display for Prc<T>
 where
-    T: std::fmt::Display + ?Sized,
+    T: core::fmt::Display + ?Sized,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.deref().fmt(f)
     }
 }
@@ -106,6 +112,7 @@ impl<T: ?Sized> Deref for Prc<T> {
     }
 }
 
+#[cfg(feature = "std")]
 impl<T> std::error::Error for Prc<T>
 where
     T: std::error::Error + ?Sized,
@@ -131,7 +138,7 @@ impl<T> Hash for Prc<T>
 where
     T: Hash + ?Sized,
 {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.deref().hash(state)
     }
 }
@@ -153,7 +160,7 @@ impl<T> Ord for Prc<T>
 where
     T: Ord + ?Sized,
 {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         let this: &T = self;
         let other: &T = other;
         this.cmp(other)
@@ -164,22 +171,22 @@ impl<T> PartialOrd<Prc<T>> for Prc<T>
 where
     T: PartialOrd<T> + ?Sized,
 {
-    fn partial_cmp(&self, other: &Prc<T>) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Prc<T>) -> Option<core::cmp::Ordering> {
         self.deref().partial_cmp(other)
     }
 }
 
-impl<T> std::fmt::Pointer for Prc<T>
+impl<T> core::fmt::Pointer for Prc<T>
 where
     T: ?Sized,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Pointer::fmt(&self.projected, f)
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        core::fmt::Pointer::fmt(&self.projected, f)
     }
 }
 
 impl<T> Unpin for Prc<T> where T: ?Sized {}
-impl<T> std::panic::UnwindSafe for Prc<T> where T: std::panic::RefUnwindSafe + ?Sized {}
+impl<T> core::panic::UnwindSafe for Prc<T> where T: core::panic::RefUnwindSafe + ?Sized {}
 
 pub struct Weak<T: ?Sized> {
     weak: TypeErasedWeak,
@@ -212,8 +219,8 @@ impl<T: ?Sized> Clone for Weak<T> {
     }
 }
 
-impl<T: ?Sized> std::fmt::Debug for Weak<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T: ?Sized> core::fmt::Debug for Weak<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "(Peak)")
     }
 }
