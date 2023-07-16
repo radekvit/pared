@@ -1,4 +1,4 @@
-use parc::sync::{Parc, Weak};
+use pared::sync::{Parc, Weak};
 use std::any::Any;
 use std::cmp::PartialEq;
 use std::sync::{Arc, Mutex};

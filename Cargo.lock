@@ -3,5 +3,5 @@
 version = 3
 
 [[package]]
-name = "parc"
+name = "pared"
 version = "0.1.0"

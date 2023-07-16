@@ -5,17 +5,21 @@ use core::{
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone)]
-pub(crate) struct TypeErasedPtr(MaybeUninit<[usize; 2]>);
+pub(crate) struct TypeErasedPtr(MaybeUninit<[*const (); 2]>);
 
 impl TypeErasedPtr {
+    /// Type-erase a possibly-unsized pointer,
+    /// only preserving the bit-representation of its pointer.
     pub(crate) fn new<T: ?Sized>(ptr: *const T) -> Self {
         let mut res = Self(MaybeUninit::zeroed());
 
         let len = size_of::<*const T>();
-        debug_assert!(len <= size_of::<[usize; 2]>());
+
+        assert!(len <= size_of::<[*const (); 2]>());
 
         // SAFETY: The target is valid for at least `len` bytes, and has no
         // requirements on the value.
+        // We asserted that our pointer fits into this representation.
         unsafe {
             let ptr_val = (&ptr) as *const *const T as *const u8;
             let target = res.0.as_mut_ptr() as *mut u8;

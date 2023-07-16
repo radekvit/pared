@@ -1,3 +1,28 @@
+//! Projected reference-counted pointers.
+//!
+//! Available pointer types:
+//! - [`Prc`]
+//! - [`Weak`]
+//!
+//! # Example
+//! ```
+//! # use std::rc::Rc;
+//! use pared::prc::{Prc, Weak};
+//! fn accepts_prc(prc: Prc<u8>) {}
+//!
+//! // Prc can be created by projecting references from an Rc
+//! let from_tuple = Prc::from_rc(&Rc::new((16usize, 8u8)), |tuple| &tuple.1);
+//! // Or by using any T: Into<Rc<_>>
+//! let from_u8: Prc<u8> = Prc::new(8u8);
+//!
+//! // Functions accept any Prc<T>, regardless of which Rc<U> it was created from
+//! if (true) {
+//!     accepts_prc(from_tuple);
+//! } else {
+//!     accepts_prc(from_u8);
+//! }
+//! ```
+
 mod erased_rc;
 
 use alloc::rc::Rc;
@@ -10,30 +35,104 @@ use core::{
 
 use erased_rc::{TypeErasedRc, TypeErasedWeak};
 
-/// Parc because ProjectedArc
+/// Projected reference counted pointer.
+///
+/// This is a projected version of [`Rc`] that points to any (sub)member of the original
+/// `Rc`'s data. Instances created from different types of `Rc<T>`s are interchangable.
+///
+/// This type implements most of `Rc`'s API surface, with the exception of operations that require
+/// access to the original `Rc`'s type, which is unavailable from this type.
+///
+/// # Example
+/// ```
+/// # use std::rc::Rc;
+/// use pared::prc::{Prc, Weak};
+/// fn accepts_prc(prc: Prc<u8>) {}
+///
+/// // Prc can be created by projecting references from an Rc
+/// let from_tuple = Prc::from_rc(&Rc::new((16usize, 8u8)), |tuple| &tuple.1);
+/// // Or by using any T: Into<Rc<_>>
+/// let from_u8: Prc<u8> = Prc::new(8u8);
+///
+/// // Functions accept any Prc<T>, regardless of which Rc<U> it was created from
+/// if (true) {
+///     accepts_prc(from_tuple);
+/// } else {
+///     accepts_prc(from_u8);
+/// }
+/// ```
+///
+/// [`Rc`]: https://doc.rust-lang.org/std/rc/struct.Rc.html
 pub struct Prc<T: ?Sized> {
     rc: TypeErasedRc,
     projected: NonNull<T>,
 }
 
 impl<T> Prc<T> {
+    /// Constructs a new `Prc<T>`.
+    ///
+    /// # Example
+    /// ```
+    /// use pared::prc::Prc;
+    /// let prc = Prc::new(6);
+    /// ```
     pub fn new(value: T) -> Prc<T> {
         Rc::new(value).into()
     }
 }
 
 impl<T: ?Sized> Prc<T> {
-    pub fn project_arc<'a, U: ?Sized>(arc: &'a Rc<U>, f: fn(&'a U) -> &'a T) -> Self {
-        let projected = f(arc);
+    /// Constructs a new `Prc<T>` from an existing `Rc<T>` by projecting a field.
+    ///
+    /// # Panics
+    /// If `f` panics, the panic is propagated to the caller and the rc won't be cloned.
+    ///
+    /// # Example
+    /// ```
+    /// # use std::rc::Rc;
+    /// use pared::prc::Prc;
+    /// let rc = Rc::new((5u64,));
+    /// let prc = Prc::from_rc(&rc, |tuple| &tuple.0);
+    /// ```
+    ///
+    /// Note that references to local variables cannot be returned from the `project` function:
+    /// ```compile_fail
+    /// # use std::rc::Rc;
+    /// use pared::prc::Prc;
+    /// let rc = Rc::new((5u64,));
+    /// let local = 5;
+    /// let prc = Prc::from_rc(&rc, |tuple| &local);
+    /// ```
+    pub fn from_rc<'a, U: ?Sized>(rc: &'a Rc<U>, f: fn(&'a U) -> &'a T) -> Self {
+        let projected = f(rc);
         // SAFETY: fn shouldn't be able to capture any local references
         // which should mean that the projection done by f is safe
         let projected = unsafe { NonNull::new_unchecked(projected as *const T as *mut T) };
         Self {
-            rc: TypeErasedRc::new(arc.clone()),
+            rc: TypeErasedRc::new(rc.clone()),
             projected,
         }
     }
 
+    /// Constructs a new `Prc<T>` from an existing `Prc<T>` by projecting a field.
+    ///
+    /// # Panics
+    /// If `f` panics, the panic is propagated to the caller and the underlying rc won't be cloned.
+    ///
+    /// # Example
+    /// ```
+    /// use pared::prc::Prc;
+    /// let prc = Prc::new((5u64,));
+    /// let projected = prc.project(|tuple| &tuple.0);
+    /// ```
+    ///
+    /// Note that references to local variables cannot be returned from the `project` function:
+    /// ```compile_fail
+    /// use pared::prc::Prc;
+    /// let prc = Prc::new((5u64,));
+    /// let local = 5;
+    /// let projected = prc.project(|tuple| &local);
+    /// ```
     pub fn project<'a, U: ?Sized>(&'a self, f: fn(&'a T) -> &'a U) -> Prc<U> {
         let projected = f(self);
         // SAFETY: fn shouldn't be able to capture any local references
@@ -45,6 +144,23 @@ impl<T: ?Sized> Prc<T> {
         }
     }
 
+    /// Creates a new `Weak` pointer to this allocation.
+    ///
+    /// This `Weak` pointer is tied to strong references to the original `Rc`, meaning it's not
+    /// tied to instances of the `Prc` it was created from.
+    ///
+    /// # Example
+    /// ```
+    /// # use std::rc::Rc;
+    /// use pared::prc::Prc;
+    /// let rc = Rc::new((42,));
+    /// let weak = {
+    ///     let prc = Prc::from_rc(&rc, |tuple| &tuple.0);
+    ///     Prc::downgrade(&prc)
+    /// };
+    /// let stored = weak.upgrade().map(|prc| *prc);
+    /// assert_eq!(stored, Some(42));
+    /// ```
     pub fn downgrade(this: &Prc<T>) -> Weak<T> {
         Weak::<T> {
             weak: this.rc.downgrade(),
@@ -52,14 +168,58 @@ impl<T: ?Sized> Prc<T> {
         }
     }
 
+    /// Gets the number of [`Weak`] pointers to this allocation.
+    ///
+    /// See [`Rc::weak_count`].
+    ///
+    /// # Example
+    /// ```
+    /// use pared::prc::Prc;
+    /// let six = Prc::new(6);
+    /// let _weak_six = Prc::downgrade(&six);
+    ///
+    /// assert_eq!(Prc::weak_count(&six), 1);
+    /// ```
+    ///
+    /// [`Rc::weak_count`]: https://doc.rust-lang.org/std/rc/struct.Rc.html#method.weak_count
     pub fn weak_count(this: &Prc<T>) -> usize {
         this.rc.weak_count()
     }
 
+    /// Gets the number of strong pointers to this allocation.
+    ///
+    /// See [`Rc::strong_count`].
+    ///
+    /// # Example
+    /// ```
+    /// use pared::prc::Prc;
+    /// let six = Prc::new(6);
+    /// let _also_six = six.clone();
+    ///
+    /// assert_eq!(Prc::strong_count(&six), 2);
+    /// ```
+    ///
+    /// [`Rc::weak_count`]: https://doc.rust-lang.org/std/rc/struct.Rc.html#method.strong_count
     pub fn strong_count(this: &Prc<T>) -> usize {
         this.rc.strong_count()
     }
 
+    /// Returns `true` if the two `Prc`s point to the same data, using [`core::ptr::eq`].
+    /// See that function for caveats when comparing `dyn Trait` pointers.
+    ///
+    /// # Example
+    /// ```
+    /// use pared::prc::Prc;
+    ///
+    /// let five = Prc::new(5);
+    /// let same_five = five.clone();
+    /// let other_five = Prc::new(5);
+    ///
+    /// assert!(Prc::ptr_eq(&five, &same_five));
+    /// assert!(!Prc::ptr_eq(&five, &other_five));
+    /// ```
+    ///
+    /// [`core::ptr::eq`]: https://doc.rust-lang.org/core/ptr/fn.eq.html
     pub fn ptr_eq(this: &Prc<T>, other: &Prc<T>) -> bool {
         core::ptr::eq(this.projected.as_ptr(), other.projected.as_ptr())
     }
@@ -88,7 +248,7 @@ impl<T: ?Sized> Clone for Prc<T> {
 
 impl<T: ?Sized + core::fmt::Debug> core::fmt::Debug for Prc<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Parc")
+        f.debug_struct("Prc")
             .field("projected", &self.deref())
             .finish()
     }
@@ -124,7 +284,7 @@ where
 
 impl<T: ?Sized, F: Into<Rc<T>>> From<F> for Prc<T> {
     fn from(value: F) -> Self {
-        Prc::project_arc(&value.into(), |x| x)
+        Prc::from_rc(&value.into(), |x| x)
     }
 }
 
@@ -188,12 +348,63 @@ where
 impl<T> Unpin for Prc<T> where T: ?Sized {}
 impl<T> core::panic::UnwindSafe for Prc<T> where T: core::panic::RefUnwindSafe + ?Sized {}
 
+/// Weak is a version of [`Prc`] that holds a non-owning reference to the managed allocation.
+/// The allocation is accessed by calling [`upgrade`], which returns `Option<Prc<T>>`.
+///
+/// `Weak` will be valid as long as the original allocation is alive; it's not tied to the specific
+/// `Prc` it was created from.
+///
+/// See [`std::sync::Weak`] for more details.
+///
+/// # Example
+/// ```
+/// use pared::prc::{Prc, Weak};
+///
+/// let tuple = Prc::new((7, 8));
+/// let weak: Weak<(usize, usize)> = Prc::downgrade(&tuple);
+/// let projected = tuple.project(|x| &x.1);
+/// drop(tuple);
+///
+/// // Even when tuple is dropped, we can still access it using Weak
+/// let tuple = weak.upgrade().unwrap();
+/// assert_eq!(*tuple, (7, 8));
+///
+/// // When we drop all strong references, Weak::upgrade will return None
+/// drop(tuple);
+/// drop(projected);
+/// assert_eq!(weak.upgrade(), None);
+/// ```
+///
+/// [`upgrade`]: Weak::upgrade
+/// [`std::sync::Weak`]: https://doc.rust-lang.org/std/rc/struct.Weak.html
 pub struct Weak<T: ?Sized> {
     weak: TypeErasedWeak,
     projected: NonNull<T>,
 }
 
 impl<T: ?Sized> Weak<T> {
+    /// Attempts to upgrade the `Weak` pointer to a [`Prc`], delaying dropping of the inner value
+    /// if successful.
+    ///
+    /// Returns [`None`] if the inner value has since been dropped.
+    ///
+    /// # Example
+    /// ```
+    ///
+    /// use pared::prc::Prc;
+    /// let five = Prc::new(5);
+    ///
+    /// let weak_five = Prc::downgrade(&five);
+    ///
+    /// let strong_five: Option<Prc<_>> = weak_five.upgrade();
+    /// assert!(strong_five.is_some());
+    ///
+    /// // Destroy all strong pointers.
+    /// drop(strong_five);
+    /// drop(five);
+    ///
+    /// assert!(weak_five.upgrade().is_none());
+    /// ```
     pub fn upgrade(&self) -> Option<Prc<T>> {
         Some(Prc {
             rc: self.weak.upgrade()?,
@@ -201,12 +412,27 @@ impl<T: ?Sized> Weak<T> {
         })
     }
 
+    /// Returns the number of strong pointers pointing to this allocation.
     pub fn strong_count(&self) -> usize {
         self.weak.strong_count()
     }
 
+    /// Gets an approximation of the number of `Weak` pointers pointing to this allocation.
+    ///
+    /// See [`std::sync::Weak::weak_count`] for more details.
+    ///
+    /// [`std::sync::Weak::weak_count`]: https://doc.rust-lang.org/std/rc/struct.Weak.html#method.weak_count
     pub fn weak_count(&self) -> usize {
         self.weak.weak_count()
+    }
+
+    /// Returns `true` if the two `Weak`s point to the same data, using [`core::ptr::eq`].
+    /// See that function for caveats when comparing `dyn Trait` pointers.
+    ///
+    /// This function is able to compare `Weak` pointers even when either or both of them
+    /// can't successfully `upgrade` anymore.
+    pub fn ptr_eq(&self, other: &Weak<T>) -> bool {
+        core::ptr::eq(self.projected.as_ptr(), other.projected.as_ptr())
     }
 }
 

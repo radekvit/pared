@@ -18,7 +18,7 @@
 //! # Example
 //! ```
 //! use std::sync::Arc;
-//! use parc::sync::Parc;
+//! use pared::sync::Parc;
 //!
 //! fn accepts_parc(parc: Parc<u8>) {}
 //!
