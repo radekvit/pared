@@ -25,7 +25,23 @@
 //! //! # Soundness
 //! None of the following should compile:
 //!
-//! ```compile_error
+//! ```compile_fail
+//! use pared::prc::Prc;
+//! use std::rc::Rc;
+//!
+//! let x: Rc<()> = Rc::new(());
+//! let z: Prc<str>;
+//! {
+//!     let s = "Hello World!".to_string();
+//!     let s_ref: &str = &s;
+//!     let y: Prc<&str> = Prc::from_rc(|_| &s_ref);
+//!     z = y.project(|s: &&str| *s);
+//!     // s deallocated here
+//! }
+//! println!("{}", &*z); // printing garbage, accessing `s` after it’s freed
+//! ```
+//!
+//! ```compile_fail
 //! use pared::prc::Prc;
 //!
 //! let x: Prc<()> = Prc::new(());
@@ -40,22 +56,7 @@
 //! println!("{}", &*z); // printing garbage, accessing `s` after it’s freed
 //! ```
 //!
-//! ```compile_error
-//! use pared::prc::Prc;
-//!
-//! let x: Prc<()> = Prc::new(());
-//! let z: Prc<str>;
-//! {
-//!     let s = "Hello World!".to_string();
-//!     let s_ref: &str = &s;
-//!     let y: Prc<&str> = x.project(|_| &s_ref);
-//!     z = y.project(|s: &&str| *s);
-//!     // s deallocated here
-//! }
-//! println!("{}", &*z); // printing garbage, accessing `s` after it’s freed
-//! ```
-//!
-//! ```compile_error
+//! ```compile_fail
 //! use pared::prc::Prc;
 //! use std::sync::Arc;
 //!
@@ -174,20 +175,6 @@ impl<T: ?Sized> Prc<T> {
         }
     }
 
-    // pub fn from_rc<F>(rc: &Rc<T>, project: F) -> Prc<<F as ProjectOnce<'_, T>>::Output>
-    // where
-    //     F: for<'x> ProjectOnce<'x, T>,
-    // {
-    //     let projected = project.project_once(rc);
-    //     // SAFETY: fn shouldn't be able to capture any local references
-    //     // which should mean that the projection done by f is safe
-    //     let projected = unsafe { NonNull::new_unchecked(projected as *const _ as *mut _) };
-    //     Prc::<<F as ProjectOnce<'_, T>>::Output> {
-    //         rc: TypeErasedRc::new(rc.clone()),
-    //         projected,
-    //     }
-    // }
-
     /// Constructs a new `Prc<T>` from an existing `Prc<T>` by projecting a field.
     ///
     /// # Panics
@@ -209,8 +196,7 @@ impl<T: ?Sized> Prc<T> {
     /// ```
     pub fn project<U, F>(&self, project: F) -> Prc<U>
     where
-        T: 'static,
-        U: ?Sized,
+        U: ?Sized + 'static,
         F: for<'x> FnOnce(&'x T) -> &'x U,
     {
         let projected = project(self);

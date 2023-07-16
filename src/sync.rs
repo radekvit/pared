@@ -48,37 +48,37 @@
 //!
 //! ```compile_fail
 //! use pared::sync::Parc;
-//!
-//! let x: Parc<()> = Parc::new(());
-//! let z: Parc<str>;
-//! {
-//!     let s = "Hello World!".to_string();
-//!     let s_ref: &str = &s;
-//!     let y: Parc<&str> = x.project(|_| &s_ref);
-//!     z = y.project(|s: &&str| *s);
-//!     // s deallocated here
-//! }
-//! println!("{}", &*z); // printing garbage, accessing `s` after it’s freed
-//! ```
-//!
-//! ```compile_fail
-//! use pared::sync::Parc;
-//!
-//! let x: Parc<()> = Parc::new(());
-//! let z: Parc<str>;
-//! {
-//!     let s = "Hello World!".to_string();
-//!     let s_ref: &str = &s;
-//!     let y: Parc<&str> = x.project(|_| &s_ref);
-//!     z = y.project(|s: &&str| *s);
-//!     // s deallocated here
-//! }
-//! println!("{}", &*z); // printing garbage, accessing `s` after it’s freed
-//! ```
-//!
-//! ```compile_fail
-//! use pared::sync::Parc;
 //! use std::sync::Arc;
+//!
+//! let x: Arc<()> = Arc::new(());
+//! let z: Parc<str>;
+//! {
+//!     let s = "Hello World!".to_string();
+//!     let s_ref: &str = &s;
+//!     let y: Parc<&str> = Parc::from_arc(|_| &s_ref);
+//!     z = y.project(|s: &&str| *s);
+//!     // s deallocated here
+//! }
+//! println!("{}", &*z); // printing garbage, accessing `s` after it’s freed
+//! ```
+//!
+//! ```compile_fail
+//! use pared::sync::Parc;
+//!
+//! let x: Parc<()> = Parc::new(());
+//! let z: Parc<str>;
+//! {
+//!     let s = "Hello World!".to_string();
+//!     let s_ref: &str = &s;
+//!     let y: Parc<&str> = x.project(|_| &s_ref);
+//!     z = y.project(|s: &&str| *s);
+//!     // s deallocated here
+//! }
+//! println!("{}", &*z); // printing garbage, accessing `s` after it’s freed
+//! ```
+//!
+//! ```compile_fail
+//! use pared::sync::Parc;
 //!
 //! let x: Parc<()> = Parc::new(());
 //! let z: Parc<str>;
@@ -241,7 +241,7 @@ impl<T: ?Sized> Parc<T> {
     #[inline]
     pub fn project<'a, U, F>(&'a self, project: F) -> Parc<U>
     where
-        T: Send + Sync + 'static,
+        T: Send + Sync,
         U: ?Sized + 'static,
         F: for<'x> FnOnce(&'x T) -> &'x U,
     {
