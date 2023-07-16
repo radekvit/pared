@@ -1,6 +1,6 @@
 #![cfg_attr(all(not(test), not(feature = "std")), no_std)]
 
-//! # Parc
+//! # `pared`
 //! Reference-counted pointers that contain projections of data stored in [`std::sync::Arc`]
 //! or [`std::rc::Rc`].
 //! This is a "self-referential" type in the vein of [ouroboros](https://lib.rs/ouroboros)
@@ -40,8 +40,10 @@
 extern crate alloc;
 extern crate core;
 
+#[cfg(doctest)]
+doc_comment::doctest!("../README.md");
+
 pub mod prc;
 pub mod sync;
 
 mod erased_ptr;
-mod prelude;

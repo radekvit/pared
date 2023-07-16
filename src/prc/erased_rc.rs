@@ -1,6 +1,10 @@
 use alloc::rc::{Rc, Weak};
-use core::marker::PhantomData;
-use core::option::{Option, Option::Some};
+use core::{
+    clone::Clone,
+    marker::{PhantomData, Sized},
+    ops::Drop,
+    option::{Option, Option::Some},
+};
 
 use crate::erased_ptr::TypeErasedPtr;
 
@@ -202,11 +206,11 @@ impl<T: ?Sized> RcErased<T> {
     }
 
     // Must be called with an erased pointer to rc::Weak<T>
-    pub(crate) unsafe fn as_arc(ptr: TypeErasedPtr) -> Rc<T> {
+    unsafe fn as_arc(ptr: TypeErasedPtr) -> Rc<T> {
         Rc::from_raw(ptr.as_ptr())
     }
 
-    pub(crate) unsafe fn as_weak(ptr: TypeErasedPtr) -> Weak<T> {
+    unsafe fn as_weak(ptr: TypeErasedPtr) -> Weak<T> {
         Weak::from_raw(ptr.as_ptr())
     }
 }

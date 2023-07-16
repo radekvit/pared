@@ -188,9 +188,11 @@ impl<T: ?Sized> Parc<T> {
     /// let local = 5;
     /// let projected = parc.project(|tuple| &local);
     /// ```
-    pub fn project<U: ?Sized, F: for<'x> FnOnce(&'x T) -> &'x U>(&self, project: F) -> Parc<U>
+    pub fn project<U, F>(&self, project: F) -> Parc<U>
     where
         T: Send + Sync,
+        U: ?Sized,
+        F: for<'x> FnOnce(&'x T) -> &'x U,
     {
         let projected = project(self);
         // SAFETY: the returned reference always converts to a non-null pointer.

@@ -1,7 +1,7 @@
 use alloc::sync::{Arc, Weak};
 use core::{
     clone::Clone,
-    marker::{PhantomData, Sized},
+    marker::{PhantomData, Send, Sized, Sync},
     ops::Drop,
     option::{Option, Option::Some},
 };

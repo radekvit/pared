@@ -9,4 +9,5 @@ std = []
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[dependencies]
+[dev-dependencies]
+doc-comment = "0.3.3"

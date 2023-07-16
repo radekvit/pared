@@ -19,7 +19,7 @@ fn slice() {
 #[test]
 fn trait_object() {
     let a: Prc<u32> = Prc::new(4);
-    let a: Prc<dyn Any> = a.project(|x| x); // Unsizing
+    let a: Prc<dyn Any> = a.project(|x| x as &dyn Any); // Unsizing
 
     // Exercise is_dangling() with a DST
     let mut a = Prc::downgrade(&a);
@@ -100,7 +100,7 @@ fn projection_of_dyn() {
     let prc = Prc::new(HasMembers {
         s: String::from("Hello!"),
     });
-    let projected: Prc<dyn std::fmt::Display> = prc.project(|s| &s.s);
+    let projected: Prc<dyn std::fmt::Display> = prc.project(|s| &s.s as &dyn std::fmt::Display);
 
     let formatted = format!("{}", projected);
 

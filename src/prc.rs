@@ -27,8 +27,14 @@ mod erased_rc;
 
 use alloc::rc::Rc;
 use core::{
+    clone::Clone,
+    cmp::{Eq, Ord, PartialEq, PartialOrd},
+    convert::{AsRef, From, Into},
     hash::Hash,
+    iter::{FromIterator, IntoIterator},
+    marker::{Sized, Unpin},
     ops::Deref,
+    ops::FnOnce,
     option::{Option, Option::Some},
     ptr::NonNull,
 };
@@ -103,8 +109,12 @@ impl<T: ?Sized> Prc<T> {
     /// let local = 5;
     /// let prc = Prc::from_rc(&rc, |tuple| &local);
     /// ```
-    pub fn from_rc<'a, U: ?Sized>(rc: &'a Rc<U>, f: fn(&'a U) -> &'a T) -> Self {
-        let projected = f(rc);
+    pub fn from_rc<U, F>(rc: &Rc<U>, project: F) -> Self
+    where
+        U: ?Sized,
+        F: for<'x> FnOnce(&'x U) -> &'x T,
+    {
+        let projected = project(rc);
         // SAFETY: fn shouldn't be able to capture any local references
         // which should mean that the projection done by f is safe
         let projected = unsafe { NonNull::new_unchecked(projected as *const T as *mut T) };
@@ -133,8 +143,12 @@ impl<T: ?Sized> Prc<T> {
     /// let local = 5;
     /// let projected = prc.project(|tuple| &local);
     /// ```
-    pub fn project<'a, U: ?Sized>(&'a self, f: fn(&'a T) -> &'a U) -> Prc<U> {
-        let projected = f(self);
+    pub fn project<U, F>(&self, project: F) -> Prc<U>
+    where
+        U: ?Sized,
+        F: for<'x> FnOnce(&'x T) -> &'x U,
+    {
+        let projected = project(self);
         // SAFETY: fn shouldn't be able to capture any local references
         // which should mean that the projection done by f is safe
         let projected = unsafe { NonNull::new_unchecked(projected as *const U as *mut U) };

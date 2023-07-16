@@ -1,11 +1,26 @@
 use core::{
-    marker::Sized,
+    assert,
+    clone::Clone,
+    marker::{Copy, Sized},
     mem::{size_of, MaybeUninit},
 };
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone)]
 pub(crate) struct TypeErasedPtr(MaybeUninit<[*const (); 2]>);
+
+impl Clone for TypeErasedPtr {
+    fn clone(&self) -> Self {
+        Self(self.0)
+    }
+}
+
+impl Copy for TypeErasedPtr {}
+
+impl core::fmt::Debug for TypeErasedPtr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_tuple("TypeErasedPtr").field(&self.0).finish()
+    }
+}
 
 impl TypeErasedPtr {
     /// Type-erase a possibly-unsized pointer,
