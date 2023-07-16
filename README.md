@@ -1,4 +1,4 @@
-# pared: Projected Shared pointers
+# pared: ***P***rojected Sh***ared*** pointers
 [<img alt="License" src="https://img.shields.io/badge/license-MIT%2FApache--2.0-informational?style=flat-square" height="20">](COPYRIGHT.md)
 [<img alt="crates.io" src="https://img.shields.io/crates/v/pared.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/pared)
 [<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-pared-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/pared)
