@@ -21,6 +21,7 @@ impl TypeErasedRc {
 
     pub(crate) fn downgrade(&self) -> TypeErasedWeak {
         TypeErasedWeak {
+            // SAFETY: downgrade is guaranteed to return an erased pointer to Weak<T>
             ptr: unsafe { (self.lifecycle.downgrade)(self.ptr) },
             lifecycle: self.lifecycle,
             _phantom: PhantomData,
@@ -28,28 +29,32 @@ impl TypeErasedRc {
     }
 
     pub(crate) fn strong_count(&self) -> usize {
+        // SAFETY: once set in TypeErasedRc::new, self.lifecycle is never modified,
+        // which guarantees that self.lifecycle and self.ptr match
         unsafe { (self.lifecycle.strong_count)(self.ptr) }
     }
 
     pub(crate) fn weak_count(&self) -> usize {
+        // SAFETY: once set in TypeErasedRc::new, self.lifecycle is never modified,
+        // which guarantees that self.lifecycle and self.ptr match
         unsafe { (self.lifecycle.weak_count)(self.ptr) }
     }
 }
 
 impl Clone for TypeErasedRc {
     fn clone(&self) -> Self {
-        unsafe {
-            (self.lifecycle.clone)(self.ptr);
-        }
+        // SAFETY: once set in TypeErasedRc::new, self.lifecycle is never modified,
+        // which guarantees that self.lifecycle and self.ptr match
+        unsafe { (self.lifecycle.clone)(self.ptr) }
         Self { ..*self }
     }
 }
 
 impl Drop for TypeErasedRc {
     fn drop(&mut self) {
-        unsafe {
-            (self.lifecycle.drop)(self.ptr);
-        }
+        // SAFETY: once set in TypeErasedRc::new, self.lifecycle is never modified,
+        // which guarantees that self.lifecycle and self.ptr match
+        unsafe { (self.lifecycle.drop)(self.ptr) }
     }
 }
 
@@ -62,6 +67,7 @@ pub(crate) struct TypeErasedWeak {
 impl TypeErasedWeak {
     pub(crate) fn upgrade(&self) -> Option<TypeErasedRc> {
         Some(TypeErasedRc {
+            // SAFETY: upgrade_weak is guaranteed to return an erased pointer to Rc<T>
             ptr: unsafe { (self.lifecycle.upgrade_weak)(self.ptr) }?,
             lifecycle: self.lifecycle,
             _phantom: PhantomData,
@@ -69,28 +75,32 @@ impl TypeErasedWeak {
     }
 
     pub(crate) fn strong_count(&self) -> usize {
+        // SAFETY: once set in TypeErasedWeak::new, self.lifecycle is never modified,
+        // which guarantees that self.lifecycle and self.ptr match
         unsafe { (self.lifecycle.strong_count_weak)(self.ptr) }
     }
 
     pub(crate) fn weak_count(&self) -> usize {
+        // SAFETY: once set in TypeErasedWeak::new, self.lifecycle is never modified,
+        // which guarantees that self.lifecycle and self.ptr match
         unsafe { (self.lifecycle.weak_count_weak)(self.ptr) }
     }
 }
 
 impl Clone for TypeErasedWeak {
     fn clone(&self) -> Self {
-        unsafe {
-            (self.lifecycle.clone_weak)(self.ptr);
-        }
+        // SAFETY: once set in TypeErasedWeak::new, self.lifecycle is never modified,
+        // which guarantees that self.lifecycle and self.ptr match
+        unsafe { (self.lifecycle.clone_weak)(self.ptr) }
         Self { ..*self }
     }
 }
 
 impl Drop for TypeErasedWeak {
     fn drop(&mut self) {
-        unsafe {
-            (self.lifecycle.drop_weak)(self.ptr);
-        }
+        // SAFETY: once set in TypeErasedWeak::new, self.lifecycle is never modified,
+        // which guarantees that self.lifecycle and self.ptr match
+        unsafe { (self.lifecycle.drop_weak)(self.ptr) }
     }
 }
 
@@ -111,6 +121,7 @@ pub(crate) struct TypeErasedLifecycle {
 pub(crate) struct RcErased<T: ?Sized>(PhantomData<*const T>);
 
 impl<T: ?Sized> RcErased<T> {
+    // A "vtable" for Rc<T> and rc::Weak<T> where T: ?Sized
     pub(crate) const LIFECYCLE: TypeErasedLifecycle = TypeErasedLifecycle {
         clone: Self::clone,
         drop: Self::drop,
@@ -124,15 +135,18 @@ impl<T: ?Sized> RcErased<T> {
         weak_count_weak: Self::weak_count_weak,
     };
 
+    // Must be called with an erased pointer to Rc<T>
     pub(crate) unsafe fn clone(ptr: TypeErasedPtr) {
         let arc: *const T = ptr.as_ptr();
         Rc::increment_strong_count(arc);
     }
 
+    // Must be called with an erased pointer to Rc<T>
     pub(crate) unsafe fn drop(ptr: TypeErasedPtr) {
         Self::as_arc(ptr);
     }
 
+    // Must be called with an erased pointer to Rc<T>
     pub(crate) unsafe fn downgrade(ptr: TypeErasedPtr) -> TypeErasedPtr {
         let arc = Self::as_arc(ptr);
         let weak = Rc::downgrade(&arc);
@@ -140,39 +154,46 @@ impl<T: ?Sized> RcErased<T> {
         TypeErasedPtr::new(Weak::into_raw(weak))
     }
 
+    // Must be called with an erased pointer to Rc<T>
     pub(crate) unsafe fn strong_count(ptr: TypeErasedPtr) -> usize {
         let arc = Self::as_arc(ptr);
         let count = Rc::strong_count(&arc);
         core::mem::forget(arc);
         count
     }
+    // Must be called with an erased pointer to Rc<T>
     pub(crate) unsafe fn weak_count(ptr: TypeErasedPtr) -> usize {
         let arc = Self::as_arc(ptr);
         let count = Rc::weak_count(&arc);
         core::mem::forget(arc);
         count
     }
+    // Must be called with an erased pointer to rc::Weak<T>
     pub(crate) unsafe fn clone_weak(ptr: TypeErasedPtr) {
         let weak = Self::as_weak(ptr);
         core::mem::forget(weak.clone());
         core::mem::forget(weak);
     }
+    // Must be called with an erased pointer to rc::Weak<T>
     pub(crate) unsafe fn drop_weak(ptr: TypeErasedPtr) {
         let weak = Self::as_weak(ptr);
         core::mem::drop(weak);
     }
+    // Must be called with an erased pointer to rc::Weak<T>
     pub(crate) unsafe fn upgrade_weak(ptr: TypeErasedPtr) -> Option<TypeErasedPtr> {
         let weak = Self::as_weak(ptr);
         let arc = weak.upgrade();
         core::mem::forget(weak);
         arc.map(|arc| TypeErasedPtr::new(Rc::into_raw(arc)))
     }
+    // Must be called with an erased pointer to rc::Weak<T>
     pub(crate) unsafe fn strong_count_weak(ptr: TypeErasedPtr) -> usize {
         let weak = Self::as_weak(ptr);
         let count = Weak::strong_count(&weak);
         core::mem::forget(weak);
         count
     }
+    // Must be called with an erased pointer to rc::Weak<T>
     pub(crate) unsafe fn weak_count_weak(ptr: TypeErasedPtr) -> usize {
         let weak = Self::as_weak(ptr);
         let count = Weak::weak_count(&weak);
@@ -180,6 +201,7 @@ impl<T: ?Sized> RcErased<T> {
         count
     }
 
+    // Must be called with an erased pointer to rc::Weak<T>
     pub(crate) unsafe fn as_arc(ptr: TypeErasedPtr) -> Rc<T> {
         Rc::from_raw(ptr.as_ptr())
     }

@@ -23,21 +23,20 @@ impl TypeErasedArc {
 
     pub(crate) fn downgrade(&self) -> TypeErasedWeak {
         TypeErasedWeak {
-            // SAFETY: once set in TypeErasedPtr::new, self.lifecycle is never modified,
-            // which guarantees that self.lifecycle and self.ptr match
+            // SAFETY: downgrade is guaranteed to return an erased pointer to Weak<T>
             ptr: unsafe { (self.lifecycle.downgrade)(self.ptr) },
             lifecycle: self.lifecycle,
         }
     }
 
     pub(crate) fn strong_count(&self) -> usize {
-        // SAFETY: once set in TypeErasedPtr::new, self.lifecycle is never modified,
+        // SAFETY: once set in TypeErasedArc::new, self.lifecycle is never modified,
         // which guarantees that self.lifecycle and self.ptr match
         unsafe { (self.lifecycle.strong_count)(self.ptr) }
     }
 
     pub(crate) fn weak_count(&self) -> usize {
-        // SAFETY: once set in TypeErasedPtr::new, self.lifecycle is never modified,
+        // SAFETY: once set in TypeErasedArc::new, self.lifecycle is never modified,
         // which guarantees that self.lifecycle and self.ptr match
         unsafe { (self.lifecycle.weak_count)(self.ptr) }
     }
@@ -46,7 +45,7 @@ impl TypeErasedArc {
 impl Clone for TypeErasedArc {
     fn clone(&self) -> Self {
         unsafe {
-            // SAFETY: once set in TypeErasedPtr::new, self.lifecycle is never modified,
+            // SAFETY: once set in TypeErasedArc::new, self.lifecycle is never modified,
             // which guarantees that self.lifecycle and self.ptr match
             (self.lifecycle.clone)(self.ptr);
         }
@@ -56,7 +55,7 @@ impl Clone for TypeErasedArc {
 
 impl Drop for TypeErasedArc {
     fn drop(&mut self) {
-        // SAFETY: once set in TypeErasedPtr::new, self.lifecycle is never modified,
+        // SAFETY: once set in TypeErasedArc::new, self.lifecycle is never modified,
         // which guarantees that self.lifecycle and self.ptr match
         unsafe { (self.lifecycle.drop)(self.ptr) }
     }
@@ -70,21 +69,20 @@ pub(crate) struct TypeErasedWeak {
 impl TypeErasedWeak {
     pub(crate) fn upgrade(&self) -> Option<TypeErasedArc> {
         Some(TypeErasedArc {
-            // SAFETY: once set in TypeErasedPtr::new, self.lifecycle is never modified,
-            // which guarantees that self.lifecycle and self.ptr match
+            // SAFETY: upgrade_weak is guaranteed to return an erased pointer to Arc<T>
             ptr: unsafe { (self.lifecycle.upgrade_weak)(self.ptr) }?,
             lifecycle: self.lifecycle,
         })
     }
 
     pub(crate) fn strong_count(&self) -> usize {
-        // SAFETY: once set in TypeErasedPtr::new, self.lifecycle is never modified,
+        // SAFETY: once set in TypeErasedWeak::new, self.lifecycle is never modified,
         // which guarantees that self.lifecycle and self.ptr match
         unsafe { (self.lifecycle.strong_count_weak)(self.ptr) }
     }
 
     pub(crate) fn weak_count(&self) -> usize {
-        // SAFETY: once set in TypeErasedPtr::new, self.lifecycle is never modified,
+        // SAFETY: once set in TypeErasedWeak::new, self.lifecycle is never modified,
         // which guarantees that self.lifecycle and self.ptr match
         unsafe { (self.lifecycle.weak_count_weak)(self.ptr) }
     }
@@ -92,7 +90,7 @@ impl TypeErasedWeak {
 
 impl Clone for TypeErasedWeak {
     fn clone(&self) -> Self {
-        // SAFETY: once set in TypeErasedPtr::new, self.lifecycle is never modified,
+        // SAFETY: once set in TypeErasedWeak::new, self.lifecycle is never modified,
         // which guarantees that self.lifecycle and self.ptr match
         unsafe { (self.lifecycle.clone_weak)(self.ptr) }
         Self { ..*self }
@@ -101,7 +99,7 @@ impl Clone for TypeErasedWeak {
 
 impl Drop for TypeErasedWeak {
     fn drop(&mut self) {
-        // SAFETY: once set in TypeErasedPtr::new, self.lifecycle is never modified,
+        // SAFETY: once set in TypeErasedWeak::new, self.lifecycle is never modified,
         // which guarantees that self.lifecycle and self.ptr match
         unsafe { (self.lifecycle.drop_weak)(self.ptr) }
     }
@@ -205,12 +203,12 @@ impl<T: ?Sized> ArcErased<T> {
     }
 
     // Must be called with an erased pointer to Arc<T>
-    pub(crate) unsafe fn as_arc(ptr: TypeErasedPtr) -> Arc<T> {
+    unsafe fn as_arc(ptr: TypeErasedPtr) -> Arc<T> {
         Arc::from_raw(ptr.as_ptr())
     }
 
     // Must be called with an erased pointer to sync::Weak<T>
-    pub(crate) unsafe fn as_weak(ptr: TypeErasedPtr) -> Weak<T> {
+    unsafe fn as_weak(ptr: TypeErasedPtr) -> Weak<T> {
         Weak::from_raw(ptr.as_ptr())
     }
 }
