@@ -2,6 +2,7 @@ use alloc::rc::{Rc, Weak};
 use core::{
     clone::Clone,
     marker::{PhantomData, Sized},
+    mem::ManuallyDrop,
     ops::Drop,
     option::{Option, Option::Some},
 };
@@ -158,71 +159,63 @@ impl<T: ?Sized> RcErased<T> {
 
     // Must be called with an erased pointer to Rc<T>
     pub(crate) unsafe fn drop(ptr: TypeErasedPtr) {
-        Self::as_arc(ptr);
+        let rc: Rc<T> = Rc::from_raw(ptr.as_ptr());
+        core::mem::drop(rc);
     }
 
     // Must be called with an erased pointer to Rc<T>
     pub(crate) unsafe fn downgrade(ptr: TypeErasedPtr) -> TypeErasedPtr {
-        let arc = Self::as_arc(ptr);
+        let arc = Self::as_manually_drop_rc(ptr);
         let weak = Rc::downgrade(&arc);
-        core::mem::forget(arc);
         TypeErasedPtr::new(Weak::into_raw(weak))
     }
 
     // Must be called with an erased pointer to Rc<T>
     pub(crate) unsafe fn strong_count(ptr: TypeErasedPtr) -> usize {
-        let arc = Self::as_arc(ptr);
-        let count = Rc::strong_count(&arc);
-        core::mem::forget(arc);
-        count
+        let arc = Self::as_manually_drop_rc(ptr);
+        Rc::strong_count(&arc)
     }
     // Must be called with an erased pointer to Rc<T>
     pub(crate) unsafe fn weak_count(ptr: TypeErasedPtr) -> usize {
-        let arc = Self::as_arc(ptr);
-        let count = Rc::weak_count(&arc);
-        core::mem::forget(arc);
-        count
+        let arc = Self::as_manually_drop_rc(ptr);
+        Rc::weak_count(&arc)
     }
     // Must be called with an erased pointer to rc::Weak<T>
     pub(crate) unsafe fn clone_weak(ptr: TypeErasedPtr) {
-        let weak = Self::as_weak(ptr);
-        core::mem::forget(weak.clone());
-        core::mem::forget(weak);
+        let weak = Self::as_manually_drop_weak(ptr);
+        let _cloned = weak.clone();
     }
     // Must be called with an erased pointer to rc::Weak<T>
     pub(crate) unsafe fn drop_weak(ptr: TypeErasedPtr) {
-        let weak = Self::as_weak(ptr);
+        let weak: Weak<T> = Weak::from_raw(ptr.as_ptr());
         core::mem::drop(weak);
     }
     // Must be called with an erased pointer to rc::Weak<T>
     pub(crate) unsafe fn upgrade_weak(ptr: TypeErasedPtr) -> Option<TypeErasedPtr> {
-        let weak = Self::as_weak(ptr);
+        let weak = Self::as_manually_drop_weak(ptr);
         let arc = weak.upgrade();
-        core::mem::forget(weak);
         arc.map(|arc| TypeErasedPtr::new(Rc::into_raw(arc)))
     }
     // Must be called with an erased pointer to rc::Weak<T>
     pub(crate) unsafe fn strong_count_weak(ptr: TypeErasedPtr) -> usize {
-        let weak = Self::as_weak(ptr);
-        let count = Weak::strong_count(&weak);
-        core::mem::forget(weak);
-        count
+        let weak = Self::as_manually_drop_weak(ptr);
+        Weak::strong_count(&weak)
     }
     // Must be called with an erased pointer to rc::Weak<T>
     pub(crate) unsafe fn weak_count_weak(ptr: TypeErasedPtr) -> usize {
-        let weak = Self::as_weak(ptr);
-        let count = Weak::weak_count(&weak);
-        core::mem::forget(weak);
-        count
+        let weak = Self::as_manually_drop_weak(ptr);
+        Weak::weak_count(&weak)
     }
 
     // Must be called with an erased pointer to rc::Weak<T>
-    unsafe fn as_arc(ptr: TypeErasedPtr) -> Rc<T> {
-        Rc::from_raw(ptr.as_ptr())
+    #[inline]
+    unsafe fn as_manually_drop_rc(ptr: TypeErasedPtr) -> ManuallyDrop<Rc<T>> {
+        ManuallyDrop::new(Rc::from_raw(ptr.as_ptr()))
     }
 
-    unsafe fn as_weak(ptr: TypeErasedPtr) -> Weak<T> {
-        Weak::from_raw(ptr.as_ptr())
+    #[inline]
+    unsafe fn as_manually_drop_weak(ptr: TypeErasedPtr) -> ManuallyDrop<Weak<T>> {
+        ManuallyDrop::new(Weak::from_raw(ptr.as_ptr()))
     }
 }
 
