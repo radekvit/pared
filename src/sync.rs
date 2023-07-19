@@ -219,6 +219,48 @@ impl<T: ?Sized> Parc<T> {
         }
     }
 
+    /// Constructs a new `Option<Parc<T>>` from an existing `Arc<T>` by trying to project a field.
+    ///
+    /// If the function passed into this returns `None`, this method will also return `None`.
+    ///
+    /// # Panics
+    /// If `f` panics, the panic is propagated to the caller and the rc won't be cloned.
+    ///
+    /// # Example
+    /// ```
+    /// use std::sync::Arc;
+    /// use pared::sync::Parc;
+    ///
+    /// enum Enum {
+    ///     Str(String),
+    ///     Int(isize),
+    /// }
+    ///
+    /// let arc = Arc::new(Enum::Int(5));
+    /// let parc = Parc::try_from_arc(&arc, |x| match x {
+    ///     Enum::Str(s) => None,
+    ///     Enum::Int(i) => Some(i),
+    /// });
+    ///
+    /// assert!(matches!(parc, Some(parc) if *parc == 5 ));
+    /// ```
+    #[inline]
+    pub fn try_from_arc<U, F>(arc: &Arc<U>, project: F) -> Option<Self>
+    where
+        U: ?Sized + Sync + Send,
+        T: 'static,
+        F: for<'x> FnOnce(&'x U) -> Option<&'x T>,
+    {
+        let projected = project(arc)?;
+        // SAFETY: fn shouldn't be able to capture any local references
+        // which should mean that the projection done by f is safe
+        let projected = unsafe { NonNull::new_unchecked(projected as *const T as *mut T) };
+        Some(Self {
+            arc: TypeErasedArc::new(arc.clone()),
+            projected,
+        })
+    }
+
     /// Constructs a new `Parc<T>` from an existing `Parc<T>` by projecting a field.
     ///
     /// # Panics
@@ -255,6 +297,47 @@ impl<T: ?Sized> Parc<T> {
             arc: self.arc.clone(),
             projected,
         }
+    }
+
+    /// Constructs a new `Option<Parc<T>>` from an existing `Parc<T>`
+    /// by trying to projecting a field.
+    ///
+    /// If the function passed into this returns `None`, this method will also return `None`.
+    ///
+    /// # Panics
+    /// If `f` panics, the panic is propagated to the caller and the underlying rc won't be cloned.
+    ///
+    /// # Example
+    /// ```
+    /// use pared::sync::Parc;
+    ///
+    /// enum Enum {
+    ///     Str(String),
+    ///     Int(isize),
+    /// }
+    ///
+    /// let prc = Parc::new(Enum::Int(5));
+    /// let projected = prc.try_project(|x| match x {
+    ///     Enum::Str(s) => None,
+    ///     Enum::Int(i) => Some(i),
+    /// });
+    ///
+    /// assert!(matches!(projected, Some(p) if *p == 5 ));
+    /// ```
+    pub fn try_project<U, F>(&self, project: F) -> Option<Parc<U>>
+    where
+        T: Send + Sync,
+        U: ?Sized + 'static,
+        F: for<'x> FnOnce(&'x T) -> Option<&'x U>,
+    {
+        let projected = project(self)?;
+        // SAFETY: fn shouldn't be able to capture any local references
+        // which should mean that the projection done by f is safe
+        let projected = unsafe { NonNull::new_unchecked(projected as *const U as *mut U) };
+        Some(Parc::<U> {
+            arc: self.arc.clone(),
+            projected,
+        })
     }
     /// Provides a raw pointer to the data.
     ///

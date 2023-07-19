@@ -111,3 +111,34 @@ fn projection_of_dyn() {
 
     assert_eq!(formatted, "Hello!");
 }
+
+#[test]
+fn fallible_projections() {
+    enum Test {
+        A(String),
+        B,
+    }
+
+    fn try_project(t: &Test) -> Option<&str> {
+        match t {
+            Test::A(s) => Some(s),
+            Test::B => None,
+        }
+    }
+
+    let arc = Arc::new(Test::B);
+    let parc = Parc::try_from_arc(&arc, try_project);
+    assert!(parc.is_none());
+
+    let parc = Parc::new(Test::B);
+    let parc = parc.try_project(try_project);
+    assert!(parc.is_none());
+
+    let arc = Arc::new(Test::A("Hi!".to_owned()));
+    let parc = Parc::try_from_arc(&arc, try_project);
+    assert!(matches!(parc, Some(p) if &*p == "Hi!"));
+
+    let parc = Parc::new(Test::A("Hi!".to_owned()));
+    let parc = parc.try_project(try_project);
+    assert!(matches!(parc, Some(p) if &*p == "Hi!"));
+}

@@ -159,6 +159,7 @@ impl<T: ?Sized> Prc<T> {
     /// let local = 5;
     /// let prc = Prc::from_rc(&rc, |tuple| &local);
     /// ```
+    #[inline]
     pub fn from_rc<U, F>(rc: &Rc<U>, project: F) -> Self
     where
         U: ?Sized,
@@ -173,6 +174,48 @@ impl<T: ?Sized> Prc<T> {
             rc: TypeErasedRc::new(rc.clone()),
             projected,
         }
+    }
+
+    /// Constructs a new `Option<Prc<T>>` from an existing `Rc<T>` by trying to project a field.
+    ///
+    /// If the function passed into this returns `None`, this method will also return `None`.
+    ///
+    /// # Panics
+    /// If `f` panics, the panic is propagated to the caller and the rc won't be cloned.
+    ///
+    /// # Example
+    /// ```
+    /// use std::rc::Rc;
+    /// use pared::prc::Prc;
+    ///
+    /// enum Enum {
+    ///     Str(String),
+    ///     Int(isize),
+    /// }
+    ///
+    /// let rc = Rc::new(Enum::Int(5));
+    /// let prc = Prc::try_from_rc(&rc, |x| match x {
+    ///     Enum::Str(s) => None,
+    ///     Enum::Int(i) => Some(i),
+    /// });
+    ///
+    /// assert!(matches!(prc, Some(prc) if *prc == 5 ));
+    /// ```
+    #[inline]
+    pub fn try_from_rc<U, F>(rc: &Rc<U>, project: F) -> Option<Self>
+    where
+        U: ?Sized,
+        T: 'static,
+        F: for<'x> FnOnce(&'x U) -> Option<&'x T>,
+    {
+        let projected = project(rc)?;
+        // SAFETY: fn shouldn't be able to capture any local references
+        // which should mean that the projection done by f is safe
+        let projected = unsafe { NonNull::new_unchecked(projected as *const T as *mut T) };
+        Some(Self {
+            rc: TypeErasedRc::new(rc.clone()),
+            projected,
+        })
     }
 
     /// Constructs a new `Prc<T>` from an existing `Prc<T>` by projecting a field.
@@ -194,6 +237,7 @@ impl<T: ?Sized> Prc<T> {
     /// let local = 5;
     /// let projected = prc.project(|tuple| &local);
     /// ```
+    #[inline]
     pub fn project<U, F>(&self, project: F) -> Prc<U>
     where
         U: ?Sized + 'static,
@@ -207,6 +251,46 @@ impl<T: ?Sized> Prc<T> {
             rc: self.rc.clone(),
             projected,
         }
+    }
+
+    /// Constructs a new `Option<Prc<T>>` from an existing `Prc<T>` by trying to projecting a field.
+    ///
+    /// If the function passed into this returns `None`, this method will also return `None`.
+    ///
+    /// # Panics
+    /// If `f` panics, the panic is propagated to the caller and the underlying rc won't be cloned.
+    ///
+    /// # Example
+    /// ```
+    /// use pared::prc::Prc;
+    ///
+    /// enum Enum {
+    ///     Str(String),
+    ///     Int(isize),
+    /// }
+    ///
+    /// let prc = Prc::new(Enum::Int(5));
+    /// let projected = prc.try_project(|x| match x {
+    ///     Enum::Str(s) => None,
+    ///     Enum::Int(i) => Some(i),
+    /// });
+    ///
+    /// assert!(matches!(projected, Some(p) if *p == 5 ));
+    /// ```
+    #[inline]
+    pub fn try_project<U, F>(&self, project: F) -> Option<Prc<U>>
+    where
+        U: ?Sized + 'static,
+        F: for<'x> FnOnce(&'x T) -> Option<&'x U>,
+    {
+        let projected = project(self)?;
+        // SAFETY: fn shouldn't be able to capture any local references
+        // which should mean that the projection done by f is safe
+        let projected = unsafe { NonNull::new_unchecked(projected as *const U as *mut U) };
+        Some(Prc::<U> {
+            rc: self.rc.clone(),
+            projected,
+        })
     }
 
     /// Provides a raw pointer to the data.
@@ -268,6 +352,7 @@ impl<T: ?Sized> Prc<T> {
     /// ```
     ///
     /// [`Rc::weak_count`]: https://doc.rust-lang.org/std/rc/struct.Rc.html#method.weak_count
+    #[inline]
     pub fn weak_count(this: &Prc<T>) -> usize {
         this.rc.weak_count()
     }
@@ -286,6 +371,7 @@ impl<T: ?Sized> Prc<T> {
     /// ```
     ///
     /// [`Rc::weak_count`]: https://doc.rust-lang.org/std/rc/struct.Rc.html#method.strong_count
+    #[inline]
     pub fn strong_count(this: &Prc<T>) -> usize {
         this.rc.strong_count()
     }
@@ -312,18 +398,21 @@ impl<T: ?Sized> Prc<T> {
 }
 
 impl<T: ?Sized> AsRef<T> for Prc<T> {
+    #[inline]
     fn as_ref(&self) -> &T {
         self.deref()
     }
 }
 
 impl<T: ?Sized> core::borrow::Borrow<T> for Prc<T> {
+    #[inline]
     fn borrow(&self) -> &T {
         self.deref()
     }
 }
 
 impl<T: ?Sized> Clone for Prc<T> {
+    #[inline]
     fn clone(&self) -> Self {
         Self {
             rc: self.rc.clone(),
@@ -363,6 +452,7 @@ impl<T> std::error::Error for Prc<T>
 where
     T: std::error::Error + ?Sized,
 {
+    #[inline]
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         self.deref().source()
     }
@@ -373,6 +463,7 @@ where
     T: ?Sized + 'static,
     F: Into<Rc<T>>,
 {
+    #[inline]
     fn from(value: F) -> Self {
         Prc::from_rc(&value.into(), |x| x)
     }
@@ -382,6 +473,7 @@ impl<T> FromIterator<T> for Prc<[T]>
 where
     T: 'static,
 {
+    #[inline]
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         iter.into_iter().collect::<Rc<[T]>>().into()
     }
@@ -391,6 +483,7 @@ impl<T> Hash for Prc<T>
 where
     T: Hash + ?Sized,
 {
+    #[inline]
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.deref().hash(state)
     }
@@ -400,6 +493,7 @@ impl<T> PartialEq<Prc<T>> for Prc<T>
 where
     T: PartialEq<T> + ?Sized,
 {
+    #[inline]
     fn eq(&self, other: &Prc<T>) -> bool {
         let this: &T = self;
         let other: &T = other;
@@ -413,6 +507,7 @@ impl<T> Ord for Prc<T>
 where
     T: Ord + ?Sized,
 {
+    #[inline]
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         let this: &T = self;
         let other: &T = other;
@@ -424,6 +519,7 @@ impl<T> PartialOrd<Prc<T>> for Prc<T>
 where
     T: PartialOrd<T> + ?Sized,
 {
+    #[inline]
     fn partial_cmp(&self, other: &Prc<T>) -> Option<core::cmp::Ordering> {
         self.deref().partial_cmp(other)
     }
@@ -433,6 +529,7 @@ impl<T> core::fmt::Pointer for Prc<T>
 where
     T: ?Sized,
 {
+    #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         core::fmt::Pointer::fmt(&self.projected, f)
     }
@@ -501,6 +598,7 @@ impl<T: ?Sized> Weak<T> {
     ///
     /// [`null`]: core::ptr::null "ptr::null"
     #[must_use]
+    #[inline]
     pub fn as_ptr(&self) -> *const T {
         NonNull::as_ptr(self.projected)
     }
@@ -527,6 +625,7 @@ impl<T: ?Sized> Weak<T> {
     ///
     /// assert!(weak_five.upgrade().is_none());
     /// ```
+    #[inline]
     pub fn upgrade(&self) -> Option<Prc<T>> {
         Some(Prc {
             rc: self.weak.upgrade()?,
@@ -535,6 +634,7 @@ impl<T: ?Sized> Weak<T> {
     }
 
     /// Returns the number of strong pointers pointing to this allocation.
+    #[inline]
     pub fn strong_count(&self) -> usize {
         self.weak.strong_count()
     }
@@ -544,6 +644,7 @@ impl<T: ?Sized> Weak<T> {
     /// See [`std::sync::Weak::weak_count`] for more details.
     ///
     /// [`std::sync::Weak::weak_count`]: https://doc.rust-lang.org/std/rc/struct.Weak.html#method.weak_count
+    #[inline]
     pub fn weak_count(&self) -> usize {
         self.weak.weak_count()
     }
@@ -553,12 +654,14 @@ impl<T: ?Sized> Weak<T> {
     ///
     /// This function is able to compare `Weak` pointers even when either or both of them
     /// can't successfully `upgrade` anymore.
+    #[inline]
     pub fn ptr_eq(&self, other: &Weak<T>) -> bool {
         core::ptr::eq(self.projected.as_ptr(), other.projected.as_ptr())
     }
 }
 
 impl<T: ?Sized> Clone for Weak<T> {
+    #[inline]
     fn clone(&self) -> Self {
         Self {
             weak: self.weak.clone(),

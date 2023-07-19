@@ -111,3 +111,34 @@ fn projection_of_dyn() {
 
     assert_eq!(formatted, "Hello!");
 }
+
+#[test]
+fn fallible_projections() {
+    enum Test {
+        A(String),
+        B,
+    }
+
+    fn try_project(t: &Test) -> Option<&str> {
+        match t {
+            Test::A(s) => Some(s),
+            Test::B => None,
+        }
+    }
+
+    let rc = Rc::new(Test::B);
+    let prc = Prc::try_from_rc(&rc, try_project);
+    assert!(prc.is_none());
+
+    let prc = Prc::new(Test::B);
+    let prc = prc.try_project(try_project);
+    assert!(prc.is_none());
+
+    let rc = Rc::new(Test::A("Hi!".to_owned()));
+    let prc = Prc::try_from_rc(&rc, try_project);
+    assert!(matches!(prc, Some(p) if &*p == "Hi!"));
+
+    let prc = Prc::new(Test::A("Hi!".to_owned()));
+    let prc = prc.try_project(try_project);
+    assert!(matches!(prc, Some(p) if &*p == "Hi!"));
+}
