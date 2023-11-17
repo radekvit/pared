@@ -5,16 +5,12 @@ use core::{
     mem::{size_of, MaybeUninit},
 };
 
+/// A type-erased, potentially fat pointer to anything.
+///
+/// This type will only work with the assumption that all pointers are at most 2 pointers.
+#[derive(Clone, Copy)]
 #[repr(transparent)]
 pub(crate) struct TypeErasedPtr(MaybeUninit<[*const (); 2]>);
-
-impl Clone for TypeErasedPtr {
-    fn clone(&self) -> Self {
-        Self(self.0)
-    }
-}
-
-impl Copy for TypeErasedPtr {}
 
 impl core::fmt::Debug for TypeErasedPtr {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -60,6 +56,7 @@ mod tests {
     use alloc::{format, string::String, vec};
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn sized() {
         let s = String::from("Hello!");
         let ptr = TypeErasedPtr::new(&s);
@@ -70,6 +67,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn unsized_slice() {
         let boxed_slice = vec![1u8, 2, 3, 4, 5].into_boxed_slice();
         let ptr = TypeErasedPtr::new(&*boxed_slice as *const [u8]);
@@ -80,6 +78,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn dyn_ptr() {
         // We want to check that the pointers actually ARE compatible
         #![allow(clippy::vtable_address_comparisons)]
@@ -90,5 +89,20 @@ mod tests {
         let r: &dyn core::fmt::Debug = unsafe { &*ptr.as_ptr() };
         assert_eq!(r as *const _, debug as *const dyn core::fmt::Debug);
         assert_eq!(format!("{:?}", r), "\"Hello!\"");
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn clone() {
+        let ptr = TypeErasedPtr::new(&1);
+        #[allow(clippy::clone_on_copy)]
+        let _ = ptr.clone();
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn debug() {
+        let ptr = TypeErasedPtr::new(&1);
+        format!("{:?}", ptr);
     }
 }

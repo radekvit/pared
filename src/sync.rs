@@ -27,13 +27,15 @@
 //!
 //! Parc can only be created from `Arc`s (or other `Parc`s) for `T: Send + Sync`.
 //!
-//! ```compile_fail
+//! ```compile_fail,E0277
 //! # use std::sync::Arc;
 //! use pared::sync::Parc;
+//! // This Arc is !Send + !Sync
+//! let arc: Arc<*const i32> = Arc::new(&1 as *const i32);
 //! // Error: Parc can only be backed by an Arc<T>: Send + Sync
-//! let parc = Arc::new(&1 as *const _).into();
+//! let parc: Parc<*const i32> = arc.into();
 //! ```
-//! ```compile_fail
+//! ```compile_fail,E0277
 //! # use std::sync::Arc;
 //! use pared::sync::Parc;
 //! let parc = Parc::new(1);
@@ -46,7 +48,7 @@
 //! # Soundness
 //! None of the following should compile:
 //!
-//! ```compile_fail
+//! ```compile_fail,E0597
 //! use pared::sync::Parc;
 //! use std::sync::Arc;
 //!
@@ -55,14 +57,14 @@
 //! {
 //!     let s = "Hello World!".to_string();
 //!     let s_ref: &str = &s;
-//!     let y: Parc<&str> = Parc::from_arc(|_| &s_ref);
+//!     let y: Parc<&str> = Parc::from_arc(&x, |_| &s_ref);
 //!     z = y.project(|s: &&str| *s);
 //!     // s deallocated here
 //! }
 //! println!("{}", &*z); // printing garbage, accessing `s` after it’s freed
 //! ```
 //!
-//! ```compile_fail
+//! ```compile_fail,E0597
 //! use pared::sync::Parc;
 //!
 //! let x: Parc<()> = Parc::new(());
@@ -77,7 +79,7 @@
 //! println!("{}", &*z); // printing garbage, accessing `s` after it’s freed
 //! ```
 //!
-//! ```compile_fail
+//! ```compile_fail,E0597
 //! use pared::sync::Parc;
 //!
 //! let x: Parc<()> = Parc::new(());
@@ -139,18 +141,20 @@ use erased_arc::{TypeErasedArc, TypeErasedWeak};
 ///
 /// Parc can only be created from `Arc`s (or other `Parc`s) for `T: Send + Sync`.
 ///
-/// ```compile_fail
+/// ```compile_fail,E0277
 /// # use std::sync::Arc;
 /// use pared::sync::Parc;
+/// // Create an Arc that's !Send + !Sync
+/// let arc: Arc<*const i32> = Arc::new(&1 as *const i32);
 /// // Error: Parc can only be backed by an Arc<T>: Send + Sync
-/// let parc = Arc::new(&1 as *const _).into();
+/// let parc: Parc<*const i32> = arc.into();
 /// ```
-/// ```compile_fail
+/// ```compile_fail,E0277
 /// # use std::sync::Arc;
 /// use pared::sync::Parc;
 /// let parc = Parc::new(1);
 /// // This Parc is !Send and !Sync
-/// let no_send = parc.project(|x| &(&1u8 as *const u8));
+/// let no_send = parc.project(|_| &(&1u8 as *const u8));
 /// // Error
 /// let denied = no_send.project(|x| x);
 /// ```
@@ -193,7 +197,7 @@ impl<T: ?Sized> Parc<T> {
     /// ```
     ///
     /// Note that references to local variables cannot be returned from the `project` function:
-    /// ```compile_fail
+    /// ```compile_fail,E0597
     /// # use std::sync::Arc;
     /// use pared::sync::Parc;
     /// let arc = Arc::new((5u64,));
@@ -205,7 +209,7 @@ impl<T: ?Sized> Parc<T> {
     where
         T: 'static,
         U: ?Sized + Send + Sync,
-        F: for<'x> FnOnce(&'x U) -> &'x T,
+        F: FnOnce(&U) -> &T,
     {
         let projected = project(arc);
         // SAFETY: the returned reference always converts to a non-null pointer.
@@ -249,7 +253,7 @@ impl<T: ?Sized> Parc<T> {
     where
         U: ?Sized + Sync + Send,
         T: 'static,
-        F: for<'x> FnOnce(&'x U) -> Option<&'x T>,
+        F: FnOnce(&U) -> Option<&T>,
     {
         let projected = project(arc)?;
         // SAFETY: fn shouldn't be able to capture any local references
@@ -274,18 +278,18 @@ impl<T: ?Sized> Parc<T> {
     /// ```
     ///
     /// Note that references to local variables cannot be returned from the `project` function:
-    /// ```compile_fail
+    /// ```compile_fail,E0597
     /// use pared::sync::Parc;
     /// let parc = Parc::new((5u64,));
     /// let local = 5;
     /// let projected = parc.project(|tuple| &local);
     /// ```
     #[inline]
-    pub fn project<'a, U, F>(&'a self, project: F) -> Parc<U>
+    pub fn project<U, F>(&self, project: F) -> Parc<U>
     where
         T: Send + Sync,
         U: ?Sized + 'static,
-        F: for<'x> FnOnce(&'x T) -> &'x U,
+        F: FnOnce(&T) -> &U,
     {
         let projected = project(self);
         // SAFETY: the returned reference always converts to a non-null pointer.
@@ -764,6 +768,6 @@ impl<T: ?Sized> Clone for Weak<T> {
 
 impl<T: ?Sized> core::fmt::Debug for Weak<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "(Peak)")
+        write!(f, "(Weak)")
     }
 }

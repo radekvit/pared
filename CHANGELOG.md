@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.3
+- Factor out the vtable to be shared between the `sync` and `prc` modules, as the type definition is identical
+- Fix tests that should fail and check that we're failing for the right reason on nightly
+- Remove lifetime bounds from `Parc` and `Prc` signatures where the default lifetime bounds are otherwise identical
+- Improve internal naming of structures and their fields
+- Increase test coverage to cover as much as possible
+
 ## 0.2.2
 - Switch `TypeErasedArc` and `TypeErasedRc` to use `ManuallyDrop` when converting the raw pointer into a concrete `Arc<T>`, `Rc<T>` or `Weak<T>` to avoid incorrect behavior in case any method we call panics. Previously, the temporary would be dropped even if it shouldn't have, causing potential UB (use after free).
 - Add `Prc::try_from_rc`, `Prc::try_project`, `Parc::try_from_arc`, and `Parc::try_project`. These are fallible versions of the same methods without `try_`, where the `FnOnce` that's passed to these functions returns an `Option`. This allows for using `Prc` and `Parc` where the projected reference might be unavailable.

@@ -25,7 +25,7 @@
 //! //! # Soundness
 //! None of the following should compile:
 //!
-//! ```compile_fail
+//! ```compile_fail,E0597
 //! use pared::prc::Prc;
 //! use std::rc::Rc;
 //!
@@ -34,14 +34,14 @@
 //! {
 //!     let s = "Hello World!".to_string();
 //!     let s_ref: &str = &s;
-//!     let y: Prc<&str> = Prc::from_rc(|_| &s_ref);
+//!     let y: Prc<&str> = Prc::from_rc(&x, |_| &s_ref);
 //!     z = y.project(|s: &&str| *s);
 //!     // s deallocated here
 //! }
 //! println!("{}", &*z); // printing garbage, accessing `s` after it’s freed
 //! ```
 //!
-//! ```compile_fail
+//! ```compile_fail,E0597
 //! use pared::prc::Prc;
 //!
 //! let x: Prc<()> = Prc::new(());
@@ -56,7 +56,7 @@
 //! println!("{}", &*z); // printing garbage, accessing `s` after it’s freed
 //! ```
 //!
-//! ```compile_fail
+//! ```compile_fail,E0597
 //! use pared::prc::Prc;
 //! use std::sync::Arc;
 //!
@@ -152,19 +152,19 @@ impl<T: ?Sized> Prc<T> {
     /// ```
     ///
     /// Note that references to local variables cannot be returned from the `project` function:
-    /// ```compile_fail
+    /// ```compile_fail,E0597
     /// # use std::rc::Rc;
     /// use pared::prc::Prc;
     /// let rc = Rc::new((5u64,));
     /// let local = 5;
-    /// let prc = Prc::from_rc(&rc, |tuple| &local);
+    /// let prc = Prc::from_rc(&rc, |_| &local);
     /// ```
     #[inline]
     pub fn from_rc<U, F>(rc: &Rc<U>, project: F) -> Self
     where
         U: ?Sized,
         T: 'static,
-        F: for<'x> FnOnce(&'x U) -> &'x T,
+        F: FnOnce(&U) -> &T,
     {
         let projected = project(rc);
         // SAFETY: fn shouldn't be able to capture any local references
@@ -206,7 +206,7 @@ impl<T: ?Sized> Prc<T> {
     where
         U: ?Sized,
         T: 'static,
-        F: for<'x> FnOnce(&'x U) -> Option<&'x T>,
+        F: FnOnce(&U) -> Option<&T>,
     {
         let projected = project(rc)?;
         // SAFETY: fn shouldn't be able to capture any local references
@@ -231,17 +231,17 @@ impl<T: ?Sized> Prc<T> {
     /// ```
     ///
     /// Note that references to local variables cannot be returned from the `project` function:
-    /// ```compile_fail
+    /// ```compile_fail,E0597
     /// use pared::prc::Prc;
     /// let prc = Prc::new((5u64,));
     /// let local = 5;
-    /// let projected = prc.project(|tuple| &local);
+    /// let projected = prc.project(|_| &local);
     /// ```
     #[inline]
     pub fn project<U, F>(&self, project: F) -> Prc<U>
     where
         U: ?Sized + 'static,
-        F: for<'x> FnOnce(&'x T) -> &'x U,
+        F: FnOnce(&T) -> &U,
     {
         let projected = project(self);
         // SAFETY: fn shouldn't be able to capture any local references
@@ -281,7 +281,7 @@ impl<T: ?Sized> Prc<T> {
     pub fn try_project<U, F>(&self, project: F) -> Option<Prc<U>>
     where
         U: ?Sized + 'static,
-        F: for<'x> FnOnce(&'x T) -> Option<&'x U>,
+        F: FnOnce(&T) -> Option<&U>,
     {
         let projected = project(self)?;
         // SAFETY: fn shouldn't be able to capture any local references
@@ -672,6 +672,6 @@ impl<T: ?Sized> Clone for Weak<T> {
 
 impl<T: ?Sized> core::fmt::Debug for Weak<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "(Peak)")
+        write!(f, "(Weak)")
     }
 }

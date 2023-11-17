@@ -38,6 +38,7 @@
 #![deny(missing_docs)]
 #![deny(clippy::std_instead_of_core)]
 #![deny(clippy::std_instead_of_alloc)]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 extern crate alloc;
 extern crate core;
@@ -49,3 +50,4 @@ pub mod prc;
 pub mod sync;
 
 mod erased_ptr;
+mod vtable;

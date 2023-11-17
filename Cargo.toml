@@ -1,25 +1,14 @@
 [package]
 name = "pared"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Radek Vít <radekvitr@gmail.com>"]
 edition = "2021"
 rust-version = "1.56"
 description = "Projected reference counted pointers"
 repository = "https://github.com/radekvit/pared"
 license = "MIT OR Apache-2.0"
-keywords = [
-    "arc",
-    "rc",
-    "projected",
-    "aliasing",
-    "shared_ptr",
-]
-categories = [
-    "data-structures",
-    "memory-management",
-    "no-std",
-    "rust-patterns",
-]
+keywords = ["arc", "rc", "projected", "aliasing", "shared_ptr"]
+categories = ["data-structures", "memory-management", "no-std", "rust-patterns"]
 
 [features]
 default = ["std"]

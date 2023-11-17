@@ -1,9 +1,13 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
 use pared::sync::{Parc, Weak};
 use std::any::Any;
 use std::cmp::PartialEq;
+use std::error::Error;
 use std::sync::{Arc, Mutex};
 
 #[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn slice() {
     let a: Parc<[u32; 3]> = Arc::new([3, 2, 1]).into();
     let b: Parc<[u32]> = a.project(|x| &x[..]); // Conversion
@@ -16,6 +20,7 @@ fn slice() {
 }
 
 #[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn trait_object() {
     let a: Parc<u32> = Parc::new(4);
     let a: Parc<dyn Any> = a.project(|x| x as &dyn Any); // Unsizing
@@ -27,6 +32,7 @@ fn trait_object() {
 }
 
 #[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn float_nan_ne() {
     #![allow(clippy::eq_op)]
     let x = Parc::new(f32::NAN);
@@ -35,6 +41,7 @@ fn float_nan_ne() {
 }
 
 #[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn partial_eq() {
     #![allow(clippy::eq_op)]
     #![allow(clippy::mutex_atomic)]
@@ -56,6 +63,7 @@ fn partial_eq() {
 const SHARED_ITER_MAX: u16 = 100;
 
 #[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn shared_from_iter_normal() {
     #![allow(clippy::redundant_clone)]
     // Exercise the base implementation for non-`TrustedLen` iterators.
@@ -79,6 +87,7 @@ fn shared_from_iter_normal() {
 }
 
 #[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn projection_to_member() {
     #![allow(clippy::mutex_atomic)]
     struct HasMembers {
@@ -98,6 +107,7 @@ fn projection_to_member() {
 }
 
 #[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn projection_of_dyn() {
     struct HasMembers {
         s: String,
@@ -113,6 +123,7 @@ fn projection_of_dyn() {
 }
 
 #[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn fallible_projections() {
     enum Test {
         A(String),
@@ -141,4 +152,105 @@ fn fallible_projections() {
     let parc = Parc::new(Test::A("Hi!".to_owned()));
     let parc = parc.try_project(try_project);
     assert!(matches!(parc, Some(p) if &*p == "Hi!"));
+}
+
+#[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn as_ptr() {
+    #[repr(C)]
+    struct Test {
+        _b: bool,
+        a: i32,
+    }
+    let rc = Arc::new(Test { a: 1, _b: true });
+    let parc = Parc::from_arc(&rc, |x| &x.a);
+    let weak = Parc::downgrade(&parc);
+
+    assert!(Parc::as_ptr(&parc) == &rc.a as *const i32);
+    assert!(Weak::as_ptr(&weak) == &rc.a as *const i32);
+}
+
+#[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn counts() {
+    let parc = Parc::new(5);
+    let parc2 = parc.clone();
+
+    assert_eq!(Parc::weak_count(&parc), 0);
+    assert_eq!(Parc::strong_count(&parc), 2);
+    assert_eq!(Parc::strong_count(&parc2), 2);
+
+    let weak = Parc::downgrade(&parc);
+    assert_eq!(Weak::weak_count(&weak), 1);
+    assert_eq!(Weak::strong_count(&weak), 2);
+}
+
+#[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn ptr_eq() {
+    let parc = Parc::new(5);
+    let cloned = parc.clone();
+    let parc2 = Parc::new(5);
+
+    assert!(Parc::ptr_eq(&parc, &cloned));
+    assert!(!Parc::ptr_eq(&parc, &parc2));
+
+    let weak = Parc::downgrade(&parc);
+    let weak_cloned = Parc::downgrade(&parc);
+    let weak2 = Parc::downgrade(&parc2);
+
+    assert!(Weak::ptr_eq(&weak, &weak_cloned));
+    assert!(!Weak::ptr_eq(&weak, &weak2));
+}
+
+#[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn borrows() {
+    let parc = Parc::new(5);
+
+    let _ = parc.as_ref();
+    let _: &i32 = std::borrow::Borrow::borrow(&parc);
+}
+
+#[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn fmt() {
+    let parc = Parc::new(5);
+
+    format!("{} {:?} {:p}", parc, parc, parc);
+
+    let weak = Parc::downgrade(&parc);
+
+    format!("{:?}", weak);
+}
+
+#[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn errors() {
+    use std::io::{Error, ErrorKind};
+
+    let parc = Parc::new(Error::new(ErrorKind::AddrInUse, ""));
+
+    let _ = parc.source();
+}
+
+#[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn hash() {
+    use std::collections::HashMap;
+
+    let parc = Parc::new(5);
+
+    let mut hm = HashMap::new();
+    hm.insert(parc, 1);
+}
+
+#[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn cmp() {
+    let five = Parc::new(5);
+    let six = Parc::new(6);
+
+    assert_eq!(five.cmp(&six), std::cmp::Ordering::Less);
+    assert_eq!(five.partial_cmp(&six), Some(std::cmp::Ordering::Less));
 }

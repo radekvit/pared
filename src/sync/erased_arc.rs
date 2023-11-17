@@ -7,11 +7,11 @@ use core::{
     option::{Option, Option::Some},
 };
 
-use crate::erased_ptr::TypeErasedPtr;
+use crate::{erased_ptr::TypeErasedPtr, vtable::RcVTable};
 
 pub struct TypeErasedArc {
     ptr: TypeErasedPtr,
-    lifecycle: &'static ArcVtable,
+    vtable: &'static RcVTable,
 }
 
 impl TypeErasedArc {
@@ -19,7 +19,7 @@ impl TypeErasedArc {
     pub(crate) fn new<T: ?Sized + Send + Sync>(arc: Arc<T>) -> Self {
         Self {
             ptr: TypeErasedPtr::new(Arc::into_raw(arc)),
-            lifecycle: &ArcErased::<T>::LIFECYCLE,
+            vtable: &ArcErased::<T>::VTABLE,
         }
     }
 
@@ -27,23 +27,23 @@ impl TypeErasedArc {
     pub(crate) fn downgrade(&self) -> TypeErasedWeak {
         TypeErasedWeak {
             // SAFETY: downgrade is guaranteed to return an erased pointer to Weak<T>
-            ptr: unsafe { (self.lifecycle.downgrade)(self.ptr) },
-            lifecycle: self.lifecycle,
+            ptr: unsafe { (self.vtable.downgrade)(self.ptr) },
+            vtable: self.vtable,
         }
     }
 
     #[inline]
     pub(crate) fn strong_count(&self) -> usize {
-        // SAFETY: once set in TypeErasedArc::new, self.lifecycle is never modified,
-        // which guarantees that self.lifecycle and self.ptr match
-        unsafe { (self.lifecycle.strong_count)(self.ptr) }
+        // SAFETY: once set in TypeErasedArc::new, self.vtable is never modified,
+        // which guarantees that self.vtable and self.ptr match
+        unsafe { (self.vtable.strong_count)(self.ptr) }
     }
 
     #[inline]
     pub(crate) fn weak_count(&self) -> usize {
-        // SAFETY: once set in TypeErasedArc::new, self.lifecycle is never modified,
-        // which guarantees that self.lifecycle and self.ptr match
-        unsafe { (self.lifecycle.weak_count)(self.ptr) }
+        // SAFETY: once set in TypeErasedArc::new, self.vtable is never modified,
+        // which guarantees that self.vtable and self.ptr match
+        unsafe { (self.vtable.weak_count)(self.ptr) }
     }
 }
 
@@ -51,9 +51,9 @@ impl Clone for TypeErasedArc {
     #[inline]
     fn clone(&self) -> Self {
         unsafe {
-            // SAFETY: once set in TypeErasedArc::new, self.lifecycle is never modified,
-            // which guarantees that self.lifecycle and self.ptr match
-            (self.lifecycle.clone)(self.ptr);
+            // SAFETY: once set in TypeErasedArc::new, self.vtable is never modified,
+            // which guarantees that self.vtable and self.ptr match
+            (self.vtable.clone)(self.ptr);
         }
         Self { ..*self }
     }
@@ -62,15 +62,15 @@ impl Clone for TypeErasedArc {
 impl Drop for TypeErasedArc {
     #[inline]
     fn drop(&mut self) {
-        // SAFETY: once set in TypeErasedArc::new, self.lifecycle is never modified,
-        // which guarantees that self.lifecycle and self.ptr match
-        unsafe { (self.lifecycle.drop)(self.ptr) }
+        // SAFETY: once set in TypeErasedArc::new, self.vtable is never modified,
+        // which guarantees that self.vtable and self.ptr match
+        unsafe { (self.vtable.drop)(self.ptr) }
     }
 }
 
 pub(crate) struct TypeErasedWeak {
     ptr: TypeErasedPtr,
-    lifecycle: &'static ArcVtable,
+    vtable: &'static RcVTable,
 }
 
 impl TypeErasedWeak {
@@ -78,32 +78,32 @@ impl TypeErasedWeak {
     pub(crate) fn upgrade(&self) -> Option<TypeErasedArc> {
         Some(TypeErasedArc {
             // SAFETY: upgrade_weak is guaranteed to return an erased pointer to Arc<T>
-            ptr: unsafe { (self.lifecycle.upgrade_weak)(self.ptr) }?,
-            lifecycle: self.lifecycle,
+            ptr: unsafe { (self.vtable.upgrade_weak)(self.ptr) }?,
+            vtable: self.vtable,
         })
     }
 
     #[inline]
     pub(crate) fn strong_count(&self) -> usize {
-        // SAFETY: once set in TypeErasedWeak::new, self.lifecycle is never modified,
-        // which guarantees that self.lifecycle and self.ptr match
-        unsafe { (self.lifecycle.strong_count_weak)(self.ptr) }
+        // SAFETY: once set in TypeErasedWeak::new, self.vtable is never modified,
+        // which guarantees that self.vtable and self.ptr match
+        unsafe { (self.vtable.strong_count_weak)(self.ptr) }
     }
 
     #[inline]
     pub(crate) fn weak_count(&self) -> usize {
-        // SAFETY: once set in TypeErasedWeak::new, self.lifecycle is never modified,
-        // which guarantees that self.lifecycle and self.ptr match
-        unsafe { (self.lifecycle.weak_count_weak)(self.ptr) }
+        // SAFETY: once set in TypeErasedWeak::new, self.vtable is never modified,
+        // which guarantees that self.vtable and self.ptr match
+        unsafe { (self.vtable.weak_count_weak)(self.ptr) }
     }
 }
 
 impl Clone for TypeErasedWeak {
     #[inline]
     fn clone(&self) -> Self {
-        // SAFETY: once set in TypeErasedWeak::new, self.lifecycle is never modified,
-        // which guarantees that self.lifecycle and self.ptr match
-        unsafe { (self.lifecycle.clone_weak)(self.ptr) }
+        // SAFETY: once set in TypeErasedWeak::new, self.vtable is never modified,
+        // which guarantees that self.vtable and self.ptr match
+        unsafe { (self.vtable.clone_weak)(self.ptr) }
         Self { ..*self }
     }
 }
@@ -111,31 +111,17 @@ impl Clone for TypeErasedWeak {
 impl Drop for TypeErasedWeak {
     #[inline]
     fn drop(&mut self) {
-        // SAFETY: once set in TypeErasedWeak::new, self.lifecycle is never modified,
-        // which guarantees that self.lifecycle and self.ptr match
-        unsafe { (self.lifecycle.drop_weak)(self.ptr) }
+        // SAFETY: once set in TypeErasedWeak::new, self.vtable is never modified,
+        // which guarantees that self.vtable and self.ptr match
+        unsafe { (self.vtable.drop_weak)(self.ptr) }
     }
-}
-
-pub(crate) struct ArcVtable {
-    pub clone: unsafe fn(TypeErasedPtr),
-    pub drop: unsafe fn(TypeErasedPtr),
-    pub downgrade: unsafe fn(TypeErasedPtr) -> TypeErasedPtr,
-    pub strong_count: unsafe fn(TypeErasedPtr) -> usize,
-    pub weak_count: unsafe fn(TypeErasedPtr) -> usize,
-
-    pub clone_weak: unsafe fn(TypeErasedPtr),
-    pub drop_weak: unsafe fn(TypeErasedPtr),
-    pub upgrade_weak: unsafe fn(TypeErasedPtr) -> Option<TypeErasedPtr>,
-    pub strong_count_weak: unsafe fn(TypeErasedPtr) -> usize,
-    pub weak_count_weak: unsafe fn(TypeErasedPtr) -> usize,
 }
 
 pub(crate) struct ArcErased<T: ?Sized>(PhantomData<*const T>);
 
 impl<T: ?Sized> ArcErased<T> {
     // A "vtable" for Arc<T> and sync::Weak<T> where T: ?Sized
-    pub(crate) const LIFECYCLE: ArcVtable = ArcVtable {
+    const VTABLE: RcVTable = RcVTable {
         clone: Self::clone,
         drop: Self::drop,
         downgrade: Self::downgrade,
@@ -149,57 +135,57 @@ impl<T: ?Sized> ArcErased<T> {
     };
 
     // Must be called with an erased pointer to Arc<T>
-    pub(crate) unsafe fn clone(ptr: TypeErasedPtr) {
+    unsafe fn clone(ptr: TypeErasedPtr) {
         let arc: *const T = ptr.as_ptr();
         Arc::increment_strong_count(arc);
     }
 
     // Must be called with an erased pointer to Arc<T>
-    pub(crate) unsafe fn drop(ptr: TypeErasedPtr) {
+    unsafe fn drop(ptr: TypeErasedPtr) {
         let arc: Arc<T> = Arc::from_raw(ptr.as_ptr());
         core::mem::drop(arc);
     }
 
     // Must be called with an erased pointer to Arc<T>
-    pub(crate) unsafe fn downgrade(ptr: TypeErasedPtr) -> TypeErasedPtr {
+    unsafe fn downgrade(ptr: TypeErasedPtr) -> TypeErasedPtr {
         let arc = Self::as_manually_drop_arc(ptr);
         let weak = Arc::downgrade(&arc);
         TypeErasedPtr::new(Weak::into_raw(weak))
     }
 
     // Must be called with an erased pointer to Arc<T>
-    pub(crate) unsafe fn strong_count(ptr: TypeErasedPtr) -> usize {
+    unsafe fn strong_count(ptr: TypeErasedPtr) -> usize {
         let arc = Self::as_manually_drop_arc(ptr);
         Arc::strong_count(&arc)
     }
     // Must be called with an erased pointer to Arc<T>
-    pub(crate) unsafe fn weak_count(ptr: TypeErasedPtr) -> usize {
+    unsafe fn weak_count(ptr: TypeErasedPtr) -> usize {
         let arc = Self::as_manually_drop_arc(ptr);
         Arc::weak_count(&arc)
     }
     // Must be called with an erased pointer to sync::Weak<T>
-    pub(crate) unsafe fn clone_weak(ptr: TypeErasedPtr) {
+    unsafe fn clone_weak(ptr: TypeErasedPtr) {
         let weak = Self::as_manually_drop_weak(ptr);
         let _cloned = weak.clone();
     }
     // Must be called with an erased pointer to sync::Weak<T>
-    pub(crate) unsafe fn drop_weak(ptr: TypeErasedPtr) {
+    unsafe fn drop_weak(ptr: TypeErasedPtr) {
         let weak: Weak<T> = Weak::from_raw(ptr.as_ptr());
         core::mem::drop(weak);
     }
     // Must be called with an erased pointer to sync::Weak<T>
-    pub(crate) unsafe fn upgrade_weak(ptr: TypeErasedPtr) -> Option<TypeErasedPtr> {
+    unsafe fn upgrade_weak(ptr: TypeErasedPtr) -> Option<TypeErasedPtr> {
         let weak = Self::as_manually_drop_weak(ptr);
         let arc = weak.upgrade();
         arc.map(|arc| TypeErasedPtr::new(Arc::into_raw(arc)))
     }
     // Must be called with an erased pointer to sync::Weak<T>
-    pub(crate) unsafe fn strong_count_weak(ptr: TypeErasedPtr) -> usize {
+    unsafe fn strong_count_weak(ptr: TypeErasedPtr) -> usize {
         let weak = Self::as_manually_drop_weak(ptr);
         Weak::strong_count(&weak)
     }
     // Must be called with an erased pointer to sync::Weak<T>
-    pub(crate) unsafe fn weak_count_weak(ptr: TypeErasedPtr) -> usize {
+    unsafe fn weak_count_weak(ptr: TypeErasedPtr) -> usize {
         let weak = Self::as_manually_drop_weak(ptr);
         Weak::weak_count(&weak)
     }
@@ -222,6 +208,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn erased_arc_drops_object_when_last_instance_drops() {
         static mut DROPPED_COUNT: usize = 0;
         struct Drops;
@@ -252,6 +239,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn erased_arc_drops_object_when_last_instance_drops_with_weak() {
         static mut DROPPED_COUNT: usize = 0;
         struct Drops;
@@ -281,6 +269,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn erased_arc_strong_count_tracks_instances() {
         let arc = Arc::new(42);
         let erased = TypeErasedArc::new(arc);
@@ -301,6 +290,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn erased_arc_weak_count() {
         let arc = Arc::new(42);
         let erased = TypeErasedArc::new(arc);
@@ -327,6 +317,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn weak_can_upgrade_when_there_are_instances() {
         let arc = Arc::new(42);
         let erased = TypeErasedArc::new(arc);
@@ -339,6 +330,6 @@ mod tests {
         core::mem::drop(upgraded);
 
         let upgraded = weak.upgrade();
-        assert!(matches!(upgraded, None));
+        assert!(upgraded.is_none());
     }
 }
