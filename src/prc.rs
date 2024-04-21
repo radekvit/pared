@@ -195,24 +195,24 @@ impl<T: ?Sized> Prc<T> {
     ///
     /// let rc = Rc::new(Enum::Int(5));
     /// let prc = Prc::try_from_rc(&rc, |x| match x {
-    ///     Enum::Str(s) => None,
-    ///     Enum::Int(i) => Some(i),
+    ///     Enum::Str(s) => Err(()),
+    ///     Enum::Int(i) => Ok(i),
     /// });
     ///
-    /// assert!(matches!(prc, Some(prc) if *prc == 5 ));
+    /// assert!(matches!(prc, Ok(prc) if *prc == 5 ));
     /// ```
     #[inline]
-    pub fn try_from_rc<U, F>(rc: &Rc<U>, project: F) -> Option<Self>
+    pub fn try_from_rc<U, E, F>(rc: &Rc<U>, project: F) -> Result<Self, E>
     where
         U: ?Sized,
         T: 'static,
-        F: FnOnce(&U) -> Option<&T>,
+        F: FnOnce(&U) -> Result<&T, E>,
     {
         let projected = project(rc)?;
         // SAFETY: fn shouldn't be able to capture any local references
         // which should mean that the projection done by f is safe
         let projected = unsafe { NonNull::new_unchecked(projected as *const T as *mut T) };
-        Some(Self {
+        Ok(Self {
             rc: TypeErasedRc::new(rc.clone()),
             projected,
         })
@@ -271,23 +271,23 @@ impl<T: ?Sized> Prc<T> {
     ///
     /// let prc = Prc::new(Enum::Int(5));
     /// let projected = prc.try_project(|x| match x {
-    ///     Enum::Str(s) => None,
-    ///     Enum::Int(i) => Some(i),
+    ///     Enum::Str(s) => Err(()),
+    ///     Enum::Int(i) => Ok(i),
     /// });
     ///
-    /// assert!(matches!(projected, Some(p) if *p == 5 ));
+    /// assert!(matches!(projected, Ok(p) if *p == 5 ));
     /// ```
     #[inline]
-    pub fn try_project<U, F>(&self, project: F) -> Option<Prc<U>>
+    pub fn try_project<U, E, F>(&self, project: F) -> Result<Prc<U>, E>
     where
         U: ?Sized + 'static,
-        F: FnOnce(&T) -> Option<&U>,
+        F: FnOnce(&T) -> Result<&U, E>,
     {
         let projected = project(self)?;
         // SAFETY: fn shouldn't be able to capture any local references
         // which should mean that the projection done by f is safe
         let projected = unsafe { NonNull::new_unchecked(projected as *const U as *mut U) };
-        Some(Prc::<U> {
+        Ok(Prc::<U> {
             rc: self.rc.clone(),
             projected,
         })

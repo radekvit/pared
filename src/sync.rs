@@ -223,9 +223,10 @@ impl<T: ?Sized> Parc<T> {
         }
     }
 
-    /// Constructs a new `Option<Parc<T>>` from an existing `Arc<T>` by trying to project a field.
+    /// Constructs a new `Result<Parc<T>, E>` from an existing `Arc<T>`
+    /// by trying to project a field.
     ///
-    /// If the function passed into this returns `None`, this method will also return `None`.
+    /// If the function passed into this returns `Err(x)`, this method will also return `Err(x)`.
     ///
     /// # Panics
     /// If `f` panics, the panic is propagated to the caller and the rc won't be cloned.
@@ -242,24 +243,24 @@ impl<T: ?Sized> Parc<T> {
     ///
     /// let arc = Arc::new(Enum::Int(5));
     /// let parc = Parc::try_from_arc(&arc, |x| match x {
-    ///     Enum::Str(s) => None,
-    ///     Enum::Int(i) => Some(i),
+    ///     Enum::Str(s) => Err(()),
+    ///     Enum::Int(i) => Ok(i),
     /// });
     ///
-    /// assert!(matches!(parc, Some(parc) if *parc == 5 ));
+    /// assert!(matches!(parc, Ok(parc) if *parc == 5 ));
     /// ```
     #[inline]
-    pub fn try_from_arc<U, F>(arc: &Arc<U>, project: F) -> Option<Self>
+    pub fn try_from_arc<U, E, F>(arc: &Arc<U>, project: F) -> Result<Self, E>
     where
         U: ?Sized + Sync + Send,
         T: 'static,
-        F: FnOnce(&U) -> Option<&T>,
+        F: FnOnce(&U) -> Result<&T, E>,
     {
         let projected = project(arc)?;
         // SAFETY: fn shouldn't be able to capture any local references
         // which should mean that the projection done by f is safe
         let projected = unsafe { NonNull::new_unchecked(projected as *const T as *mut T) };
-        Some(Self {
+        Ok(Self {
             arc: TypeErasedArc::new(arc.clone()),
             projected,
         })
@@ -303,10 +304,10 @@ impl<T: ?Sized> Parc<T> {
         }
     }
 
-    /// Constructs a new `Option<Parc<T>>` from an existing `Parc<T>`
+    /// Constructs a new `Result<Parc<T>, E>` from an existing `Parc<T>`
     /// by trying to projecting a field.
     ///
-    /// If the function passed into this returns `None`, this method will also return `None`.
+    /// If the function passed into this returns `Err(x)`, this method will also return `Err(x)`.
     ///
     /// # Panics
     /// If `f` panics, the panic is propagated to the caller and the underlying rc won't be cloned.
@@ -322,23 +323,23 @@ impl<T: ?Sized> Parc<T> {
     ///
     /// let prc = Parc::new(Enum::Int(5));
     /// let projected = prc.try_project(|x| match x {
-    ///     Enum::Str(s) => None,
-    ///     Enum::Int(i) => Some(i),
+    ///     Enum::Str(s) => Err(()),
+    ///     Enum::Int(i) => Ok(i),
     /// });
     ///
-    /// assert!(matches!(projected, Some(p) if *p == 5 ));
+    /// assert!(matches!(projected, Ok(p) if *p == 5 ));
     /// ```
-    pub fn try_project<U, F>(&self, project: F) -> Option<Parc<U>>
+    pub fn try_project<U, E, F>(&self, project: F) -> Result<Parc<U>, E>
     where
         T: Send + Sync,
         U: ?Sized + 'static,
-        F: for<'x> FnOnce(&'x T) -> Option<&'x U>,
+        F: for<'x> FnOnce(&'x T) -> Result<&'x U, E>,
     {
         let projected = project(self)?;
         // SAFETY: fn shouldn't be able to capture any local references
         // which should mean that the projection done by f is safe
         let projected = unsafe { NonNull::new_unchecked(projected as *const U as *mut U) };
-        Some(Parc::<U> {
+        Ok(Parc::<U> {
             arc: self.arc.clone(),
             projected,
         })

@@ -131,28 +131,28 @@ fn fallible_projections() {
         B,
     }
 
-    fn try_project(t: &Test) -> Option<&str> {
+    fn try_project(t: &Test) -> Result<&str, ()> {
         match t {
-            Test::A(s) => Some(s),
-            Test::B => None,
+            Test::A(s) => Ok(s),
+            Test::B => Err(()),
         }
     }
 
     let rc = Rc::new(Test::B);
     let prc = Prc::try_from_rc(&rc, try_project);
-    assert!(prc.is_none());
+    assert!(prc.is_err());
 
     let prc = Prc::new(Test::B);
     let prc = prc.try_project(try_project);
-    assert!(prc.is_none());
+    assert!(prc.is_err());
 
     let rc = Rc::new(Test::A("Hi!".to_owned()));
     let prc = Prc::try_from_rc(&rc, try_project);
-    assert!(matches!(prc, Some(p) if &*p == "Hi!"));
+    assert!(matches!(prc, Ok(p) if &*p == "Hi!"));
 
     let prc = Prc::new(Test::A("Hi!".to_owned()));
     let prc = prc.try_project(try_project);
-    assert!(matches!(prc, Some(p) if &*p == "Hi!"));
+    assert!(matches!(prc, Ok(p) if &*p == "Hi!"));
 }
 
 #[test]

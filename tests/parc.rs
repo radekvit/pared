@@ -130,28 +130,28 @@ fn fallible_projections() {
         B,
     }
 
-    fn try_project(t: &Test) -> Option<&str> {
+    fn try_project(t: &Test) -> Result<&str, ()> {
         match t {
-            Test::A(s) => Some(s),
-            Test::B => None,
+            Test::A(s) => Ok(s),
+            Test::B => Err(()),
         }
     }
 
     let arc = Arc::new(Test::B);
     let parc = Parc::try_from_arc(&arc, try_project);
-    assert!(parc.is_none());
+    assert!(parc.is_err());
 
     let parc = Parc::new(Test::B);
     let parc = parc.try_project(try_project);
-    assert!(parc.is_none());
+    assert!(parc.is_err());
 
     let arc = Arc::new(Test::A("Hi!".to_owned()));
     let parc = Parc::try_from_arc(&arc, try_project);
-    assert!(matches!(parc, Some(p) if &*p == "Hi!"));
+    assert!(matches!(parc, Ok(p) if &*p == "Hi!"));
 
     let parc = Parc::new(Test::A("Hi!".to_owned()));
     let parc = parc.try_project(try_project);
-    assert!(matches!(parc, Some(p) if &*p == "Hi!"));
+    assert!(matches!(parc, Ok(p) if &*p == "Hi!"));
 }
 
 #[test]

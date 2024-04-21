@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.0
+- Change the API of `try_*` functions on `Parc` and `Prc` to take functions returning `Result` instead of `Option` and make them return `Result` instead of `Option`.
+
 ## 0.2.3
 - Factor out the vtable to be shared between the `sync` and `prc` modules, as the type definition is identical
 - Fix tests that should fail and check that we're failing for the right reason on nightly
