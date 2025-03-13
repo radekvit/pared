@@ -55,6 +55,6 @@ mod tests {
             strong_count_weak: c,
             weak_count_weak: c,
         };
-        format!("{:?}", vtable);
+        let _msg = format!("{:?}", vtable);
     }
 }

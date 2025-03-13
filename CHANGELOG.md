@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0
+- Fix unsoundness in `Parc::project` and `Prc::project` due to lifetime coersion and a missing
+  lifetime constraint.
+- Fix unsoudness in `Parc::from_arc`, `Parc::try_from_arc`, `Prc::from_rc`, and `Prc::try_from_rc`
+  due to a missing lifetime constraint on the `Arc`/`Rc` parameter.
+
 ## 0.3.0
 - Change the API of `try_*` functions on `Parc` and `Prc` to take functions returning `Result` instead of `Option` and make them return `Result` instead of `Option`.
 

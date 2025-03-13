@@ -204,12 +204,34 @@ impl<T: ?Sized> Parc<T> {
     /// let local = 5;
     /// let parc = Parc::from_arc(&arc, |tuple| &local);
     /// ```
+    ///
+    /// Do not allow calling `from_arc` on `Arc`s that don't own their data.
+    /// If this is allowed to happen, we could create a `Parc` with a longer lifetime than the
+    /// original `Arc`.
+    /// ```compile_fail,E0597
+    /// use pared::sync::Parc;
+    /// use std::sync::Arc;
+    ///
+    /// struct PrintOnDrop<'a>(&'a str);
+    /// impl Drop for PrintOnDrop<'_> {
+    ///     fn drop(&mut self) {
+    ///         println!("dropping: {:?}", self.0);
+    ///     }
+    /// }
+    ///
+    /// let s = "Hello World!".to_owned();
+    /// let arc = Arc::new(PrintOnDrop(&s));
+    /// let p = Parc::from_arc(&arc, |_| &());
+    /// drop(arc);
+    /// drop(s);
+    /// drop(p); // garbage / use-after-free if `from_arc` compiles
+    /// ```
     #[inline]
     pub fn from_arc<U, F>(arc: &Arc<U>, project: F) -> Self
     where
-        T: 'static,
-        U: ?Sized + Send + Sync,
+        U: ?Sized + Send + Sync + 'static,
         F: FnOnce(&U) -> &T,
+        T: 'static,
     {
         let projected = project(arc);
         // SAFETY: the returned reference always converts to a non-null pointer.
@@ -249,10 +271,32 @@ impl<T: ?Sized> Parc<T> {
     ///
     /// assert!(matches!(parc, Ok(parc) if *parc == 5 ));
     /// ```
+    ///
+    /// Do not allow calling `try_from_arc` on `Arc`s that don't own their data.
+    /// If this is allowed to happen, we could create a `Parc` with a longer lifetime than the
+    /// original `Arc`.
+    /// ```compile_fail,E0597
+    /// use pared::sync::Parc;
+    /// use std::sync::Arc;
+    ///
+    /// struct PrintOnDrop<'a>(&'a str);
+    /// impl Drop for PrintOnDrop<'_> {
+    ///     fn drop(&mut self) {
+    ///         println!("dropping: {:?}", self.0);
+    ///     }
+    /// }
+    ///
+    /// let s = "Hello World!".to_owned();
+    /// let arc = Arc::new(PrintOnDrop(&s));
+    /// let p = Parc::try_from_arc(&arc, |_| Ok::<&'static (), ()>(&()));
+    /// drop(arc);
+    /// drop(s);
+    /// drop(p); // garbage / use-after-free if `try_from_arc` compiles
+    /// ```
     #[inline]
     pub fn try_from_arc<U, E, F>(arc: &Arc<U>, project: F) -> Result<Self, E>
     where
-        U: ?Sized + Sync + Send,
+        U: ?Sized + Sync + Send + 'static,
         T: 'static,
         F: FnOnce(&U) -> Result<&T, E>,
     {
@@ -285,10 +329,25 @@ impl<T: ?Sized> Parc<T> {
     /// let local = 5;
     /// let projected = parc.project(|tuple| &local);
     /// ```
+    ///
+    /// Do not allow coercing `Parc<&'static T>` to `Parc<&'short T>` when projecting:
+    /// ```compile_fail,E0597
+    /// use pared::sync::Parc;
+    ///
+    /// let s = "Hello World!".to_owned();
+    /// // x: Parc<&'static ()>
+    /// let x = Parc::new(&());
+    /// // This must fail
+    /// let x = x.project(|_| s.as_str());
+    ///
+    /// println!("{:?}", &*x); // "Hello World!"
+    /// drop(s);
+    /// println!("{:?}", &*x); // garbage / use-after-free if the above doesn't fail
+    /// ```
     #[inline]
     pub fn project<U, F>(&self, project: F) -> Parc<U>
     where
-        T: Send + Sync,
+        T: Send + Sync + 'static,
         U: ?Sized + 'static,
         F: FnOnce(&T) -> &U,
     {

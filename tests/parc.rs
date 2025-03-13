@@ -217,11 +217,11 @@ fn borrows() {
 fn fmt() {
     let parc = Parc::new(5);
 
-    format!("{} {:?} {:p}", parc, parc, parc);
+    let _msg = format!("{} {:?} {:p}", parc, parc, parc);
 
     let weak = Parc::downgrade(&parc);
 
-    format!("{:?}", weak);
+    let _msg = format!("{:?}", weak);
 }
 
 #[test]
