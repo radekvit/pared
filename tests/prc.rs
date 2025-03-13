@@ -218,11 +218,11 @@ fn borrows() {
 fn fmt() {
     let prc = Prc::new(5);
 
-    format!("{} {:?} {:p}", prc, prc, prc);
+    let _msg = format!("{} {:?} {:p}", prc, prc, prc);
 
     let weak = Prc::downgrade(&prc);
 
-    format!("{:?}", weak);
+    let _msg = format!("{:?}", weak);
 }
 
 #[test]

@@ -159,10 +159,32 @@ impl<T: ?Sized> Prc<T> {
     /// let local = 5;
     /// let prc = Prc::from_rc(&rc, |_| &local);
     /// ```
+    ///
+    /// Do not allow calling `from_rc` on `Rc`s that don't own their data.
+    /// If this is allowed to happen, we could create a `Prc` with a longer lifetime than the
+    /// original `Rc`.
+    /// ```compile_fail,E0597
+    /// use pared::prc::Prc;
+    /// use std::rc::Rc;
+    ///
+    /// struct PrintOnDrop<'a>(&'a str);
+    /// impl Drop for PrintOnDrop<'_> {
+    ///     fn drop(&mut self) {
+    ///         println!("dropping: {:?}", self.0);
+    ///     }
+    /// }
+    ///
+    /// let s = "Hello World!".to_owned();
+    /// let rc = Rc::new(PrintOnDrop(&s));
+    /// let p = Prc::from_rc(&rc, |_| &());
+    /// drop(rc);
+    /// drop(s);
+    /// drop(p); // garbage / use-after-free if `from_rc` compiles
+    /// ```
     #[inline]
     pub fn from_rc<U, F>(rc: &Rc<U>, project: F) -> Self
     where
-        U: ?Sized,
+        U: ?Sized + 'static,
         T: 'static,
         F: FnOnce(&U) -> &T,
     {
@@ -201,10 +223,32 @@ impl<T: ?Sized> Prc<T> {
     ///
     /// assert!(matches!(prc, Ok(prc) if *prc == 5 ));
     /// ```
+    ///
+    /// Do not allow calling `from_rc` on `Rc`s that don't own their data.
+    /// If this is allowed to happen, we could create a `Prc` with a longer lifetime than the
+    /// original `Rc`.
+    /// ```compile_fail,E0597
+    /// use pared::prc::Prc;
+    /// use std::rc::Rc;
+    ///
+    /// struct PrintOnDrop<'a>(&'a str);
+    /// impl Drop for PrintOnDrop<'_> {
+    ///     fn drop(&mut self) {
+    ///         println!("dropping: {:?}", self.0);
+    ///     }
+    /// }
+    ///
+    /// let s = "Hello World!".to_owned();
+    /// let rc = Rc::new(PrintOnDrop(&s));
+    /// let p = Prc::try_from_rc(&rc, |_| Ok::<&'static(), ()>(&()));
+    /// drop(rc);
+    /// drop(s);
+    /// drop(p); // garbage / use-after-free if `try_from_rc` compiles
+    /// ```
     #[inline]
     pub fn try_from_rc<U, E, F>(rc: &Rc<U>, project: F) -> Result<Self, E>
     where
-        U: ?Sized,
+        U: ?Sized + 'static,
         T: 'static,
         F: FnOnce(&U) -> Result<&T, E>,
     {
@@ -237,10 +281,26 @@ impl<T: ?Sized> Prc<T> {
     /// let local = 5;
     /// let projected = prc.project(|_| &local);
     /// ```
+    ///
+    /// /// Do not allow coercing `Prc<&'static T>` to `Prc<&'short T>` when projecting:
+    /// ```compile_fail,E0597
+    /// use pared::prc::Prc;
+    ///
+    /// let s = "Hello World!".to_owned();
+    /// // x: Prc<&'static ()>
+    /// let x = Prc::new(&());
+    /// // This must fail
+    /// let x = x.project(|_| s.as_str());
+    ///
+    /// println!("{:?}", &*x); // "Hello World!"
+    /// drop(s);
+    /// println!("{:?}", &*x); // garbage / use-after-free if the above doesn't fail
+    /// ```
     #[inline]
     pub fn project<U, F>(&self, project: F) -> Prc<U>
     where
         U: ?Sized + 'static,
+        T: 'static,
         F: FnOnce(&T) -> &U,
     {
         let projected = project(self);

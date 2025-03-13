@@ -1,6 +1,6 @@
 [package]
 name = "pared"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Radek Vít <radekvitr@gmail.com>"]
 edition = "2021"
 rust-version = "1.56"
@@ -13,6 +13,9 @@ categories = ["data-structures", "memory-management", "no-std", "rust-patterns"]
 [features]
 default = ["std"]
 std = []
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
 
 [dependencies]
 
